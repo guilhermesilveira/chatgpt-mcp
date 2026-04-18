@@ -14,22 +14,7 @@
 //   chatgpt-mcp stop                   stop an in-progress generation
 //   chatgpt-mcp check                  self-heal report: walk selectors.json against live DOM
 
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
-function parseFlags(argv) {
-  const out = { _: [] };
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a === '--fresh') out.fresh = true;
-    else if (a === '--model') out.model = argv[++i];
-    else if (a === '--thinking') out.thinking = argv[++i];
-    else out._.push(a);
-  }
-  return out;
-}
+import { parseFlags } from './flags.mjs';
 
 const [cmd, ...rest] = process.argv.slice(2);
 

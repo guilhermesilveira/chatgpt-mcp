@@ -159,6 +159,16 @@ setTimeout(() => copy(document.documentElement.outerHTML), 5000)
 
 then open the menu within 5 seconds.
 
+## Tests
+
+Pure-logic unit tests with Node's built-in test runner — no browser, no extra deps:
+
+```bash
+npm test
+```
+
+Covers the pill-text parser (`parse-pill.mjs`), CLI flag parser (`flags.mjs`), and `selectors.json` shape invariants.
+
 ## Optional PM2 service
 
 If you want `chatgpt-mcp launch` to run as a service and survive reboots:

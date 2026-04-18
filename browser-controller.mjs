@@ -10,6 +10,8 @@ import { homedir } from 'node:os';
 import { mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parsePillText } from './parse-pill.mjs';
+export { parsePillText };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIR = join(homedir(), '.chatgpt-mcp');
@@ -81,21 +83,11 @@ export async function getPage() {
   return _page;
 }
 
-// Read-only: extracts model + thinking from the accent pill text without
-// opening any menu. Pill text patterns observed:
-//   "Thinking"            → { model: "Thinking" }
-//   "Pro"                 → { model: "Pro" }
-//   "Länger Pro"          → { model: "Pro",  thinking: "Länger" }
-// If no pill exists, the current model is "Instant" (no thinking concept).
 async function readPillInfo(page) {
   const pill = page.locator(SELECTORS.thinking.pill_trigger);
-  if (!(await pill.count())) return { model: 'Instant', thinking: null, pill: null };
+  if (!(await pill.count())) return parsePillText(null);
   const raw = (await pill.first().innerText()).trim();
-  const tokens = raw.split(/\s+/).filter(Boolean);
-  if (tokens.length >= 2) {
-    return { model: tokens[tokens.length - 1], thinking: tokens.slice(0, -1).join(' '), pill: raw };
-  }
-  return { model: raw, thinking: null, pill: raw };
+  return parsePillText(raw);
 }
 
 export async function status() {

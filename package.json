@@ -10,7 +10,8 @@
     "launch": "node cli.mjs launch",
     "mcp": "node cli.mjs server",
     "http": "node cli.mjs http",
-    "check": "node cli.mjs check"
+    "check": "node cli.mjs check",
+    "test": "node --test 'tests/*.test.mjs'"
   },
   "license": "MIT",
   "dependencies": {
