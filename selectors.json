@@ -1,0 +1,69 @@
+{
+  "_meta": {
+    "source": "Discovered interactively from dom-samples/ on 2026-04-17 against chatgpt.com (German UI). Update by re-running launcher + capturing fresh HTML.",
+    "locale_notes": "aria-labels are in German ('Aufforderung senden', 'Streaming beenden', 'Voice starten'). Selectors below prefer language-independent data-testid/id."
+  },
+
+  "urls": {
+    "home": "https://chatgpt.com",
+    "login_probe_paths": ["/auth/login", "/login"]
+  },
+
+  "composer": {
+    "prompt_input": "#prompt-textarea",
+    "prompt_input_role": "[role=\"textbox\"][contenteditable=\"true\"]",
+    "send_button": "button[data-testid=\"send-button\"]",
+    "stop_button": "button[data-testid=\"stop-button\"]",
+    "submit_button_any": "#composer-submit-button"
+  },
+
+  "conversation": {
+    "turn_any": "[data-testid^=\"conversation-turn-\"]",
+    "turn_assistant_section": "section[data-turn=\"assistant\"]",
+    "turn_user_section": "section[data-turn=\"user\"]",
+    "message_assistant": "[data-message-author-role=\"assistant\"]",
+    "message_user": "[data-message-author-role=\"user\"]",
+    "message_markdown_body": "[data-message-author-role=\"assistant\"] .markdown"
+  },
+
+  "signals": {
+    "generating": "button[data-testid=\"stop-button\"]",
+    "turn_finished_marker": "[data-testid=\"copy-turn-action-button\"]",
+    "login_required_marker": "a[href*=\"/auth/login\"], button[data-testid=\"login-button\"]"
+  },
+
+  "nav": {
+    "new_chat_button": "[data-testid=\"create-new-chat-button\"]"
+  },
+
+  "model": {
+    "dropdown_button": "[data-testid=\"model-switcher-dropdown-button\"]",
+    "_menuitem_role": "[role=\"menuitemradio\"], [role=\"menuitem\"], [role=\"option\"]",
+    "configure_modal_trigger": "[data-testid=\"model-configure-modal\"]",
+    "submenu_trigger_text": ["Mehr Modelle", "More models", "Legacy models", "Weitere Modelle"],
+    "name_map": {
+      "instant":  "[data-testid=\"model-switcher-gpt-5-3\"]",
+      "thinking": "[data-testid=\"model-switcher-gpt-5-4-thinking\"]",
+      "pro":      "[data-testid=\"model-switcher-gpt-5-4-pro\"]",
+      "gpt-5":    "[data-testid=\"model-switcher-gpt-5-3\"]",
+      "gpt-5-thinking": "[data-testid=\"model-switcher-gpt-5-4-thinking\"]",
+      "gpt-5-pro":      "[data-testid=\"model-switcher-gpt-5-4-pro\"]"
+    }
+  },
+
+  "thinking": {
+    "pill_trigger": "button.__composer-pill[data-tone=\"accent\"]",
+    "menuitem_role": "[role=\"menuitemradio\"]",
+    "current_marker": "[role=\"menuitemradio\"][aria-checked=\"true\"]",
+    "icon_href": {
+      "standard": "#fec800",
+      "longer":   "#143e56"
+    },
+    "name_map_text": {
+      "standard": ["Standard"],
+      "longer":   ["Länger", "Longer", "Extended", "Mais longo"],
+      "extended": ["Länger", "Longer", "Extended", "Mais longo"]
+    },
+    "_note": "Pill only exists when a Pro/Thinking-capable model is active. Matches by text (locale list) first, then by SVG sprite icon href as a locale-independent fallback."
+  }
+}

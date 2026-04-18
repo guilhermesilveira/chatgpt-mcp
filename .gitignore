@@ -1,0 +1,5 @@
+node_modules/
+dom-samples/
+.claude/
+.DS_Store
+*.log

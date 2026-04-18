@@ -1,0 +1,20 @@
+{
+  "name": "chatgpt-mcp",
+  "version": "0.1.0",
+  "description": "Local MCP server that drives ChatGPT web via patchright (persistent login, CDP-shared session).",
+  "type": "module",
+  "bin": {
+    "chatgpt-mcp": "./cli.mjs"
+  },
+  "scripts": {
+    "launch": "node cli.mjs launch",
+    "mcp": "node cli.mjs server",
+    "http": "node cli.mjs http",
+    "check": "node cli.mjs check"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "patchright": "^1.59.4"
+  }
+}
