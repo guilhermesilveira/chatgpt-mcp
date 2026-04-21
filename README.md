@@ -166,12 +166,15 @@ exocortex-chatgpt fetch "$RID"      # {"text":"...","files":["/tmp/chatgpt-image
 Registered by `mcp-server.mjs`:
 
 Async-first guidance for agents: see [ASYNC_PATTERN.md](./ASYNC_PATTERN.md).
+Preferred MCP async entry points are `submit_pro` and `submit_image`.
+The legacy `submit` interface is kept in CLI only (`exocortex-chatgpt submit`) for compatibility.
 
 | Tool | Description |
 |------|-------------|
 | `query` | Convenience wrapper over submit+poll+fetch. Supports `fresh`, `model`, `thinking`, `agent`, `mode`, `output_dir`. In `mode=image`, returns JSON with files. |
 | `generate_image` | Synchronous image flow on the shared tab. Waits up to 3 minutes, downloads one or more images, returns JSON `{ files, text? }`. Supports `output_dir`, `fresh`, `model`, `thinking`. |
-| `submit` | Queue a prompt and return `{ request_id, response_path, image_dir? }` immediately. Supports `agent`, `fresh`, `model`, `thinking`, `mode`, `output_dir`. |
+| `submit_pro` | Queue a heavy-reasoning text prompt and return `{ request_id, response_path }` immediately. Internally forces Pro + longer thinking + text mode. |
+| `submit_image` | Queue an image-generation prompt and return `{ request_id, image_dir }` immediately. Internally forces `gpt-5` + image mode + `fresh=true`. |
 | `status` | With `request_id`: queued request status `{ state, agent, elapsed_ms, error? }`. Without `request_id`: session status `{ state, model, thinking }`. |
 | `fetch` | Fetch queued request result `{ text, files[], complete, error? }`. |
 | `read_last_response` | Read the last assistant message without sending anything. |

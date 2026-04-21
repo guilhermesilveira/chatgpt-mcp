@@ -11,11 +11,11 @@ For agents, the async flow is the default and recommended path.
 
 ## Canonical flow
 
-1. Call `submit` with `prompt` and optional `mode`.
+1. Call `submit_pro` for text/reasoning work or `submit_image` for image generation.
 2. Read immediate result:
    - `request_id`
    - `response_path`
-   - `image_dir` (only when `mode=image`)
+   - `image_dir` (for `submit_image`)
 3. Sleep with wake-on-signal (for example, macx-tmux `sleep`).
 4. Wait for daemon notification from `send-to-agent.sh`.
 5. Parse the path from the notification text.
@@ -24,7 +24,7 @@ For agents, the async flow is the default and recommended path.
 
 ## Submit return shape
 
-Text mode:
+`submit_pro`:
 
 ```json
 {
@@ -33,17 +33,14 @@ Text mode:
 }
 ```
 
-Image mode:
+`submit_image`:
 
 ```json
 {
   "request_id": "<id>",
-  "response_path": "~/.chatgpt-mcp/responses/<id>.json",
   "image_dir": "~/.chatgpt-mcp/images/<timestamp>-<slug>"
 }
 ```
-
-`response_path` is always present.
 
 ## Notification formats
 
@@ -78,14 +75,14 @@ Agents should treat this file as the source of truth.
 ## Pseudocode example
 
 ```text
-result = submit(prompt, mode="image")
+result = submit_image(prompt)
 request_id = result.request_id
-response_path = result.response_path
 image_dir = result.image_dir
 
 sleep(wake_on_signal=true)
 # daemon sends: "... ready: <id> at <response_path> ..." or "... in <image_dir> ..."
 
+response_path = "~/.chatgpt-mcp/responses/<request_id>.json"
 payload = read_json(response_path)
 if payload.state == "error":
   raise payload.error
