@@ -1,17 +1,21 @@
 // browser-controller.mjs
-// Owns the patchright browser session.
+// Owns the Camoufox browser session.
 // Legacy sync usage: one singleton page + serialized mutating operations.
 // Async mailbox usage: ephemeral request tabs created in the shared context.
 
-import { chromium } from 'patchright';
-import { mkdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parsePillText } from './parse-pill.mjs';
-import { getCDPFilePath, getImagesDir, getProfileDir } from './runtime-paths.mjs';
+import { getImagesDir, getProfileDir } from './runtime-paths.mjs';
 export { parsePillText };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
+const { NewBrowser, launchOptions } = require('camoufox');
+const { firefox } = require('playwright-core');
+
 const IMAGE_ROOT_DIR = getImagesDir();
 const IMAGE_GENERATION_TIMEOUT_MS = 180_000;
 const SELECTORS = JSON.parse(readFileSync(join(__dirname, 'selectors.json'), 'utf8'));
@@ -74,61 +78,28 @@ function isAttachOnlyMode() {
   return process.env.CHATGPT_MCP_ATTACH_ONLY === '1';
 }
 
-async function tryConnectCDP() {
-  const cdpFile = getCDPFilePath();
-  const url = process.env.CHATGPTPRO_CDP
-    || (existsSync(cdpFile) ? readFileSync(cdpFile, 'utf8').trim() : null);
-  if (!url) return null;
-
-  try {
-    const browser = await chromium.connectOverCDP(url);
-    const context = browser.contexts()[0];
-    if (!context) return null;
-    log('attached via CDP', url);
-    return { browser, context, owns: false };
-  } catch (error) {
-    log('CDP connect failed:', error.message);
-    return null;
-  }
-}
-
 async function launchOwn() {
   const profileDir = getProfileDir();
-  const cdpFile = getCDPFilePath();
   mkdirSync(profileDir, { recursive: true });
-  const cdpUrl = process.env.CHATGPTPRO_CDP || 'http://127.0.0.1:9222';
-  let cdpPort = 9222;
-  try {
-    const parsed = new URL(cdpUrl);
-    cdpPort = Number(parsed.port || 9222);
-  } catch {}
+  const headless = process.env.CHATGPT_HEADLESS === '1';
+  const launchConfig = {
+    headless,
+    data_dir: profileDir,
+  };
 
-  const context = await chromium.launchPersistentContext(profileDir, {
-    channel: 'chrome',
-    headless: false,
-    viewport: null,
-    args: [
-      '--start-maximized',
-      `--remote-debugging-port=${cdpPort}`,
-      '--remote-debugging-address=127.0.0.1',
-    ],
-  });
-  writeFileSync(cdpFile, `http://127.0.0.1:${cdpPort}\n`);
-  log('launched own persistent context');
-  return { browser: null, context, owns: true };
+  const fromOptions = await launchOptions(launchConfig);
+  const context = await NewBrowser(firefox, headless, fromOptions, false, false, launchConfig);
+  if (!context || typeof context.newPage !== 'function' || typeof context.pages !== 'function') {
+    throw new Error('camoufox persistent launch did not return a BrowserContext');
+  }
+
+  log(`launched own Camoufox persistent context (${headless ? 'headless' : 'headed'})`);
+  return { browser: context.browser?.() || null, context, owns: true };
 }
 
 async function getContext() {
   if (isContextUsable()) return _context;
   resetSessionHandles();
-
-  const attached = await tryConnectCDP();
-  if (attached) {
-    _browser = attached.browser;
-    _context = attached.context;
-    _ownsBrowser = attached.owns;
-    return _context;
-  }
 
   if (isAttachOnlyMode()) {
     throw new Error('no_shared_browser_owner: launch the browser owner first (`exocortex-chatgpt launch`)');
