@@ -192,7 +192,25 @@ test('notification hook calls runner when send-to-agent script exists', async ()
     assert.equal(okImage, true);
     assert.ok(called, 'runner should be called for images');
     assert.equal(called[0], 'foo');
-    assert.equal(called[1], 'exocortex-chatgpt images ready: 456 in /tmp/chatgpt-images — 2 file(s)');
+    assert.equal(
+      called[1],
+      `exocortex-chatgpt images ready: 456 in /tmp/chatgpt-images — 2 file(s). Response at ${join(home, 'responses', '456.json')}.`,
+    );
+
+    called = null;
+    const okRouted = await notifyAgentIfAvailable('foo', '789', 'preview', {
+      scriptPath,
+      useResponseRouter: true,
+      runner: async (_script, args) => { called = args; },
+    });
+    assert.equal(okRouted, true);
+    assert.ok(called, 'runner should be called for routed notifications');
+    assert.equal(called[0], 'foo');
+    assert.equal(called[1], join(home, 'responses', '789.json'));
+    assert.equal(
+      called[2],
+      `exocortex-chatgpt response ready: 789 at ${join(home, 'responses', '789.json')} — preview: preview`,
+    );
 
     const missing = await notifyAgentIfAvailable('foo', '123', 'preview', {
       scriptPath: join(home, 'missing.sh'),

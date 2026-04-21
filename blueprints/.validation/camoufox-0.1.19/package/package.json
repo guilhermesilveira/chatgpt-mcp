@@ -1,0 +1,65 @@
+{
+  "name": "camoufox",
+  "version": "0.1.19",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsup",
+    "build:tsc": "rimraf dist && tsc",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+   "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "bin": "dist/__main__.cjs",
+  "files": [
+    "dist",
+    "data-files"
+  ],
+  "keywords": [
+    "camoufox",
+    "fingerprint",
+    "playwright",
+    "anti-detection"
+  ],
+  "author": "tocha688",
+  "license": "MIT",
+  "description": "JavaScript port of Camoufox - a tool for Firefox anti-fingerprinting and browser automation.",
+  "homepage": "https://github.com/tocha688/camoufox-js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tocha688/camoufox-js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tocha688/camoufox-js/issues"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "commander": "^13.1.0",
+    "fingerprint-generator": "^2.1.69",
+    "hpagent": "^1.2.0",
+    "js-yaml": "^4.1.0",
+    "language-tags": "^2.1.0",
+    "maxmind": "^4.3.24",
+    "playwright-core": "^1.54.1",
+    "progress": "^2.0.3",
+    "sql.js": "^1.13.0",
+    "typescript": "^5.8.3",
+    "ua-parser-js": "^2.0.4",
+    "xml2js": "^0.6.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.16.3",
+    "rimraf": "^6.0.1",
+    "tsup": "^8.5.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "sqlite3"
+    ]
+  }
+}

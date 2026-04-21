@@ -372,6 +372,11 @@ function previewText(input) {
   return text.slice(0, 100);
 }
 
+function briefText(input) {
+  const text = String(input ?? '').replace(/\s+/g, ' ').trim();
+  return text.slice(0, 220);
+}
+
 async function defaultNotifyRunner(scriptPath, args) {
   await new Promise(resolve => {
     const child = spawn(scriptPath, args, { stdio: 'ignore' });
@@ -384,16 +389,21 @@ export async function notifyAgentIfAvailable(agent, requestId, preview, options 
   const scriptPath = options.scriptPath ?? defaultNotifyScriptPath();
   if (!existsSync(scriptPath)) return false;
 
+  const useResponseRouter = Boolean(options.useResponseRouter);
   const response_path = options.responsePath ?? responsePath(requestId);
   const image_dir = options.imageDir ?? null;
   const file_count = Number.isFinite(options.fileCount) ? options.fileCount : 0;
+  const request_brief = briefText(options.requestBrief ?? '');
   const message = image_dir
-    ? `exocortex-chatgpt images ready: ${requestId} in ${image_dir} — ${file_count} file(s)`
-    : `exocortex-chatgpt response ready: ${requestId} at ${response_path} — preview: ${previewText(preview)}`;
+    ? `exocortex-chatgpt images ready: ${requestId} in ${image_dir} — ${file_count} file(s). Response at ${response_path}.${request_brief ? ` Original request: ${request_brief}` : ''}`
+    : `exocortex-chatgpt response ready: ${requestId} at ${response_path} — preview: ${previewText(preview)}${request_brief ? ` Original request: ${request_brief}` : ''}`;
   const runner = options.runner ?? defaultNotifyRunner;
+  const args = useResponseRouter
+    ? [normalizeAgent(agent), response_path, message]
+    : [normalizeAgent(agent), message];
 
   try {
-    await runner(scriptPath, [normalizeAgent(agent), message]);
+    await runner(scriptPath, args);
   } catch {
     // Explicitly silent when hook fails.
   }

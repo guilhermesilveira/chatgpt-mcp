@@ -9,6 +9,11 @@ function elapsedMs(createdAt, finishedAt = null) {
   return Math.max(0, end - start);
 }
 
+function briefPrompt(prompt) {
+  const text = String(prompt ?? '').replace(/\s+/g, ' ').trim();
+  return text.slice(0, 220);
+}
+
 export async function processClaimedRequest(input) {
   const {
     requestId,
@@ -72,6 +77,7 @@ export async function processClaimedRequest(input) {
     await notifyAgentIfAvailable(agent, requestId, response.text, {
       imageDir: response.image_dir,
       fileCount: response.files.length,
+      requestBrief: briefPrompt(active.prompt),
     });
     return { state: 'complete' };
   } catch (error) {
@@ -104,7 +110,9 @@ export async function processClaimedRequest(input) {
     try {
       await writeResponseVerified(requestId, response);
       await removeRequest(requestId);
-      await notifyAgentIfAvailable(agent, requestId, message);
+      await notifyAgentIfAvailable(agent, requestId, message, {
+        requestBrief: briefPrompt(request?.prompt),
+      });
     } catch (persistError) {
       console.error('[daemon] failed to persist error response', requestId, persistError?.message || persistError);
     }

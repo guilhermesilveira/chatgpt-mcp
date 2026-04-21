@@ -23,8 +23,11 @@ import {
   shutdown,
 } from './browser-controller.mjs';
 import { processClaimedRequest } from './daemon-core.mjs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 const POLL_MS = Number(process.env.CHATGPT_MCP_DAEMON_POLL_MS || 250);
+const ROUTE_RESPONSE_SCRIPT = join(homedir(), '.clawd', 'bin', 'route-response.sh');
 
 let stopping = false;
 const inFlightByRequest = new Map();
@@ -74,7 +77,13 @@ async function maybeStartRequests() {
         removeRequest,
         closeEphemeralPage,
         markEphemeralTabError,
-        notifyAgentIfAvailable,
+        notifyAgentIfAvailable: (notifyAgent, notifyRequestId, notifyPreview, notifyOptions = {}) => {
+          return notifyAgentIfAvailable(notifyAgent, notifyRequestId, notifyPreview, {
+            ...notifyOptions,
+            scriptPath: ROUTE_RESPONSE_SCRIPT,
+            useResponseRouter: true,
+          });
+        },
         releaseRequestLock,
       },
     })
