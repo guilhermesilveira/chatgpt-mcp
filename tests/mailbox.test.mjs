@@ -31,8 +31,9 @@ async function withMailboxHome(fn) {
 
 test('submit creates request file and pending status', async () => {
   await withMailboxHome(async () => {
-    const { request_id } = await submit('hello world', { agent: 'foo' });
+    const { request_id, response_path } = await submit('hello world', { agent: 'foo' });
     assert.match(request_id, /^\d+-[a-f0-9]{4}-foo$/);
+    assert.equal(response_path, responsePath(request_id));
 
     const req = JSON.parse(await readFile(requestPath(request_id), 'utf8'));
     assert.equal(req.prompt, 'hello world');
@@ -48,6 +49,21 @@ test('submit creates request file and pending status', async () => {
     assert.equal(f.complete, false);
     assert.equal(f.error, undefined);
     assert.deepEqual(f.files, []);
+  });
+});
+
+test('submit in image mode returns deterministic image_dir and request output_dir', async () => {
+  await withMailboxHome(async (home) => {
+    const { request_id, response_path, image_dir } = await submit('Draw a red circle', { agent: 'img', mode: 'image' });
+    assert.match(request_id, /^\d+-[a-f0-9]{4}-img$/);
+    assert.equal(response_path, responsePath(request_id));
+    assert.ok(image_dir, 'image_dir should be returned for mode=image');
+    assert.ok(image_dir.startsWith(join(home, 'images')), 'image_dir should use mailbox image root');
+
+    const req = JSON.parse(await readFile(requestPath(request_id), 'utf8'));
+    assert.equal(req.mode, 'image');
+    assert.equal(req.output_dir, image_dir);
+    assert.equal(req.image_dir, image_dir);
   });
 });
 
@@ -144,7 +160,22 @@ test('notification hook calls runner when send-to-agent script exists', async ()
     assert.equal(ok, true);
     assert.ok(called, 'runner should be called');
     assert.equal(called[0], 'foo');
-    assert.match(called[1], /^exocortex-chatgpt response ready: 123 — preview: x{100}$/);
+    assert.equal(
+      called[1],
+      `exocortex-chatgpt response ready: 123 at ${join(home, 'responses', '123.json')} — preview: ${'x'.repeat(100)}`,
+    );
+
+    called = null;
+    const okImage = await notifyAgentIfAvailable('foo', '456', 'unused preview', {
+      scriptPath,
+      imageDir: '/tmp/chatgpt-images',
+      fileCount: 2,
+      runner: async (_script, args) => { called = args; },
+    });
+    assert.equal(okImage, true);
+    assert.ok(called, 'runner should be called for images');
+    assert.equal(called[0], 'foo');
+    assert.equal(called[1], 'exocortex-chatgpt images ready: 456 in /tmp/chatgpt-images — 2 file(s)');
 
     const missing = await notifyAgentIfAvailable('foo', '123', 'preview', {
       scriptPath: join(home, 'missing.sh'),

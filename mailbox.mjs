@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, open, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, extname, join } from 'node:path';
+import { dirname, extname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -13,6 +13,7 @@ const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
 function baseDir() { return process.env.CHATGPT_MCP_HOME || join(homedir(), '.chatgpt-mcp'); }
 function requestsDir() { return join(baseDir(), 'requests'); }
 function responsesDir() { return join(baseDir(), 'responses'); }
+function imagesDir() { return join(baseDir(), 'images'); }
 function daemonPidPath() { return join(baseDir(), 'daemon.pid'); }
 function defaultNotifyScriptPath() { return join(homedir(), '.clawd', 'bin', 'send-to-agent.sh'); }
 
@@ -115,6 +116,36 @@ function normalizeFiles(files) {
   return Array.isArray(files) ? files : [];
 }
 
+function slugifyPrompt(prompt) {
+  const slug = String(prompt ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48);
+  return slug || 'image';
+}
+
+function formatTimestamp(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+}
+
+function normalizeOutputDir(outputDir) {
+  if (!outputDir) return null;
+  return isAbsolute(outputDir) ? outputDir : resolve(process.cwd(), outputDir);
+}
+
+function deriveImageDir(requestId, createdAt, prompt, outputDir = null) {
+  const normalized = normalizeOutputDir(outputDir);
+  if (normalized) return normalized;
+
+  const parsedCreatedAt = new Date(createdAt);
+  const requestEpoch = Number(String(requestId).split('-')[0]);
+  const fallbackDate = Number.isFinite(requestEpoch) ? new Date(requestEpoch) : new Date();
+  const ts = Number.isNaN(parsedCreatedAt.getTime()) ? fallbackDate : parsedCreatedAt;
+  return join(imagesDir(), `${formatTimestamp(ts)}-${slugifyPrompt(prompt)}`);
+}
+
 export async function submit(prompt, opts = {}) {
   if (typeof prompt !== 'string' || !prompt.trim()) {
     throw new Error('prompt required');
@@ -124,6 +155,11 @@ export async function submit(prompt, opts = {}) {
 
   const requestId = makeRequestId(opts.agent);
   const createdAt = nowIso();
+  const mode = normalizeMode(opts.mode);
+  const response_path = responsePath(requestId);
+  const image_dir = mode === 'image'
+    ? deriveImageDir(requestId, createdAt, prompt, opts.output_dir ?? null)
+    : undefined;
   const request = {
     request_id: requestId,
     state: 'pending',
@@ -132,14 +168,19 @@ export async function submit(prompt, opts = {}) {
     model: opts.model ?? null,
     thinking: opts.thinking ?? null,
     fresh: Boolean(opts.fresh),
-    mode: normalizeMode(opts.mode),
-    output_dir: opts.output_dir ?? null,
+    mode,
+    output_dir: mode === 'image'
+      ? image_dir
+      : normalizeOutputDir(opts.output_dir ?? null),
+    image_dir: mode === 'image' ? image_dir : null,
     created_at: createdAt,
     updated_at: createdAt,
   };
 
   await atomicWriteJson(requestPath(requestId), request);
-  return { request_id: requestId };
+  return mode === 'image'
+    ? { request_id: requestId, response_path, image_dir }
+    : { request_id: requestId, response_path };
 }
 
 export async function readRequest(requestId) {
@@ -319,7 +360,12 @@ export async function notifyAgentIfAvailable(agent, requestId, preview, options 
   const scriptPath = options.scriptPath ?? defaultNotifyScriptPath();
   if (!existsSync(scriptPath)) return false;
 
-  const message = `exocortex-chatgpt response ready: ${requestId} — preview: ${previewText(preview)}`;
+  const response_path = options.responsePath ?? responsePath(requestId);
+  const image_dir = options.imageDir ?? null;
+  const file_count = Number.isFinite(options.fileCount) ? options.fileCount : 0;
+  const message = image_dir
+    ? `exocortex-chatgpt images ready: ${requestId} in ${image_dir} — ${file_count} file(s)`
+    : `exocortex-chatgpt response ready: ${requestId} at ${response_path} — preview: ${previewText(preview)}`;
   const runner = options.runner ?? defaultNotifyRunner;
 
   try {

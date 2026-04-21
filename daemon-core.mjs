@@ -55,6 +55,8 @@ export async function processClaimedRequest(input) {
       agent,
       text: result?.text ?? '',
       files: Array.isArray(result?.files) ? result.files : [],
+      mode: active.mode ?? 'text',
+      image_dir: active.mode === 'image' ? (active.image_dir ?? active.output_dir ?? null) : null,
       created_at: active.created_at,
       started_at: active.started_at,
       finished_at: finishedAt,
@@ -67,7 +69,10 @@ export async function processClaimedRequest(input) {
     await closeEphemeralPage(page);
     page = null;
 
-    await notifyAgentIfAvailable(agent, requestId, response.text);
+    await notifyAgentIfAvailable(agent, requestId, response.text, {
+      imageDir: response.image_dir,
+      fileCount: response.files.length,
+    });
     return { state: 'complete' };
   } catch (error) {
     const message = String(error?.message || error);
@@ -87,6 +92,8 @@ export async function processClaimedRequest(input) {
       agent,
       text: '',
       files: [],
+      mode: request?.mode ?? 'text',
+      image_dir: request?.mode === 'image' ? (request?.image_dir ?? request?.output_dir ?? null) : null,
       error: message,
       created_at: createdAt,
       started_at: startedAt,

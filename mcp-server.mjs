@@ -27,7 +27,7 @@ const server = new McpServer({ name: 'exocortex-chatgpt-connector', version: '0.
 
 server.registerTool('query', {
   title: 'Send a prompt to ChatGPT',
-  description: 'Sends a prompt and waits for completion. Uses submit+poll+fetch under the hood.',
+  description: 'BLOCKING 10s-30min. Agents: use submit + sleep + read-file pattern instead to avoid wasting context. This sync tool is for CLI and interactive single-user use. Sends a prompt and waits for completion. Uses submit+poll+fetch under the hood.',
   inputSchema: {
     prompt: z.string().min(1),
     fresh: z.boolean().optional().describe('Start a new chat before sending.'),
@@ -48,7 +48,7 @@ server.registerTool('query', {
 
 server.registerTool('generate_image', {
   title: 'Generate image(s) with ChatGPT',
-  description: 'Sends an image-generation prompt, waits for completion (up to 3 minutes), downloads images from the latest assistant response, and returns local file paths.',
+  description: 'BLOCKING 10s-30min. Agents: use submit + sleep + read-file pattern instead to avoid wasting context. This sync tool is for CLI and interactive single-user use. Sends an image-generation prompt, waits for completion (up to 3 minutes), downloads images from the latest assistant response, and returns local file paths.',
   inputSchema: {
     prompt: z.string().min(1),
     output_dir: z.string().optional().describe('Optional output directory. Defaults to ~/.chatgpt-mcp/images/<timestamp>-<slug>/'),
@@ -64,7 +64,7 @@ server.registerTool('generate_image', {
 
 server.registerTool('submit', {
   title: 'Submit async ChatGPT request',
-  description: 'Queues a prompt and returns request_id immediately. Poll with status/fetch.',
+  description: 'Queues a prompt and returns immediately with { request_id, response_path, image_dir? }. The response file appears at response_path when ready (typically 10s-30min depending on model/mode). Canonical agent pattern: submit -> receive paths -> sleep (macx-tmux) -> notification from send-to-agent.sh includes the path -> read the file directly. Do NOT use the blocking query/generate_image tools from agents; they waste context blocking for minutes.',
   inputSchema: {
     prompt: z.string().min(1),
     agent: z.string().optional().describe('Agent label to notify when response is ready.'),
