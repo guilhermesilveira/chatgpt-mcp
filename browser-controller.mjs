@@ -433,25 +433,94 @@ async function waitForNewImageCandidates(page, seenKeys, timeoutMs) {
 
 async function readBlobImageFromPage(page, blobUrl) {
   const payload = await page.evaluate(async (url) => {
-    try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        return { ok: false, error: `blob fetch failed: ${response.status}` };
-      }
-      const blob = await response.blob();
-      const bytes = new Uint8Array(await blob.arrayBuffer());
+    const bytesToBase64 = (bytes) => {
       let binary = '';
       const chunkSize = 0x8000;
       for (let i = 0; i < bytes.length; i += chunkSize) {
         binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
       }
+      return btoa(binary);
+    };
+
+    const decodeBlob = async (blob) => {
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      return {
+        base64: bytesToBase64(bytes),
+        contentType: blob.type || '',
+      };
+    };
+
+    const decodeBlobUrlViaCanvas = async (blobUrl) => {
+      const findExistingImage = () => {
+        for (const node of document.querySelectorAll('img')) {
+          const img = /** @type {HTMLImageElement} */ (node);
+          const src = img.currentSrc || img.src || '';
+          if (src === blobUrl) return img;
+        }
+        return null;
+      };
+
+      const existingImage = findExistingImage();
+      const image = existingImage || new Image();
+      if (!existingImage) {
+        image.src = blobUrl;
+      }
+
+      if (!image.complete || !image.naturalWidth || !image.naturalHeight) {
+        await new Promise((resolve, reject) => {
+          image.onload = () => resolve();
+          image.onerror = (event) => reject(event);
+        });
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, image.naturalWidth || image.width || 0);
+      canvas.height = Math.max(1, image.naturalHeight || image.height || 0);
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('canvas_2d_unavailable');
+      context.drawImage(image, 0, 0);
+
+      const dataUrl = canvas.toDataURL('image/png');
+      const marker = 'base64,';
+      const markerIndex = dataUrl.indexOf(marker);
+      if (markerIndex < 0) {
+        throw new Error('canvas_data_url_missing_base64');
+      }
+      return {
+        base64: dataUrl.slice(markerIndex + marker.length),
+        contentType: 'image/png',
+      };
+    };
+
+    let fetchError = null;
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        fetchError = `blob fetch failed: ${response.status}`;
+      } else {
+        const decoded = await decodeBlob(await response.blob());
+        return {
+          ok: true,
+          base64: decoded.base64,
+          contentType: decoded.contentType || response.headers.get('content-type') || '',
+        };
+      }
+    } catch (error) {
+      fetchError = String(error);
+    }
+
+    // Firefox/Camoufox on chatgpt.com can reject fetch(blob:...) with NetworkError.
+    // Fallback to the rendered image element + canvas extraction for blob URLs.
+    try {
+      const decoded = await decodeBlobUrlViaCanvas(url);
       return {
         ok: true,
-        base64: btoa(binary),
-        contentType: blob.type || response.headers.get('content-type') || '',
+        base64: decoded.base64,
+        contentType: decoded.contentType || '',
       };
     } catch (error) {
-      return { ok: false, error: String(error) };
+      const fallbackError = String(error);
+      return { ok: false, error: fetchError ? `${fetchError}; fallback failed: ${fallbackError}` : fallbackError };
     }
   }, blobUrl);
 
