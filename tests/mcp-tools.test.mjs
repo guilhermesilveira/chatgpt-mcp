@@ -12,7 +12,7 @@ function makeServer() {
   };
 }
 
-test('submit_pro routes to model=pro thinking=longer mode=text', async () => {
+test('submit_pro routes to model=pro thinking=extended mode=text', async () => {
   const calls = [];
   const server = makeServer();
 
@@ -30,7 +30,7 @@ test('submit_pro routes to model=pro thinking=longer mode=text', async () => {
   const out = await handler({ prompt: 'deep work', agent: 'alpha', fresh: false });
   assert.deepEqual(calls, [{
     prompt: 'deep work',
-    opts: { agent: 'alpha', model: 'pro', thinking: 'longer', mode: 'text', fresh: false },
+    opts: { agent: 'alpha', model: 'pro', thinking: 'extended', mode: 'text', fresh: false },
   }]);
 
   assert.deepEqual(JSON.parse(out.content[0].text), {

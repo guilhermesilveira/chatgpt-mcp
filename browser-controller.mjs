@@ -1,21 +1,19 @@
 // browser-controller.mjs
-// Owns the Camoufox browser session.
+// Owns the patchright browser session.
 // Legacy sync usage: one singleton page + serialized mutating operations.
 // Async mailbox usage: ephemeral request tabs created in the shared context.
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import { chromium } from 'patchright';
+import { mkdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parsePillText } from './parse-pill.mjs';
-import { getImagesDir, getProfileDir } from './runtime-paths.mjs';
+import { getCDPFilePath, getImagesDir, getProfileDir } from './runtime-paths.mjs';
 export { parsePillText };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const require = createRequire(import.meta.url);
-const { NewBrowser, launchOptions } = require('camoufox');
-const { firefox } = require('playwright-core');
-
+const PROFILE_DIR = getProfileDir();
+const CDP_FILE = getCDPFilePath();
 const IMAGE_ROOT_DIR = getImagesDir();
 const IMAGE_GENERATION_TIMEOUT_MS = 180_000;
 const SELECTORS = JSON.parse(readFileSync(join(__dirname, 'selectors.json'), 'utf8'));
@@ -78,37 +76,60 @@ function isAttachOnlyMode() {
   return process.env.CHATGPT_MCP_ATTACH_ONLY === '1';
 }
 
-async function launchOwn() {
-  const profileDir = getProfileDir();
-  mkdirSync(profileDir, { recursive: true });
-  const headless = process.env.CHATGPT_HEADLESS === '1';
-  const launchConfig = {
-    headless,
-    data_dir: profileDir,
-  };
+async function tryConnectCDP() {
+  const url = process.env.CHATGPTPRO_CDP
+    || (existsSync(CDP_FILE) ? readFileSync(CDP_FILE, 'utf8').trim() : null);
+  if (!url) return null;
 
-  const fromOptions = await launchOptions(launchConfig);
-  const context = await NewBrowser(firefox, headless, fromOptions, false, false, launchConfig);
-  if (!context || typeof context.newPage !== 'function' || typeof context.pages !== 'function') {
-    throw new Error('camoufox persistent launch did not return a BrowserContext');
+  try {
+    const browser = await chromium.connectOverCDP(url);
+    const context = browser.contexts()[0];
+    if (!context) return null;
+    log('attached via CDP', url);
+    return { browser, context, owns: false };
+  } catch (error) {
+    log('CDP connect failed:', error.message);
+    return null;
   }
+}
 
-  log(`launched own Camoufox persistent context (${headless ? 'headless' : 'headed'})`);
-  return { browser: context.browser?.() || null, context, owns: true };
+async function launchOwn() {
+  mkdirSync(PROFILE_DIR, { recursive: true });
+  const cdpUrl = process.env.CHATGPTPRO_CDP || 'http://127.0.0.1:9222';
+  let cdpPort = 9222;
+  try {
+    const parsed = new URL(cdpUrl);
+    cdpPort = Number(parsed.port || 9222);
+  } catch {}
+
+  const context = await chromium.launchPersistentContext(PROFILE_DIR, {
+    channel: 'chrome',
+    headless: false,
+    viewport: null,
+    args: [
+      '--start-maximized',
+      `--remote-debugging-port=${cdpPort}`,
+      '--remote-debugging-address=127.0.0.1',
+    ],
+  });
+  writeFileSync(CDP_FILE, `http://127.0.0.1:${cdpPort}\n`);
+  log('launched own persistent context');
+  return { browser: null, context, owns: true };
 }
 
 async function getContext() {
   if (isContextUsable()) return _context;
   resetSessionHandles();
 
-  if (isAttachOnlyMode()) {
+  const attached = await tryConnectCDP();
+  if (!attached && isAttachOnlyMode()) {
     throw new Error('no_shared_browser_owner: launch the browser owner first (`exocortex-chatgpt launch`)');
   }
 
-  const launched = await launchOwn();
-  _browser = launched.browser;
-  _context = launched.context;
-  _ownsBrowser = launched.owns;
+  const resolved = attached || (await launchOwn());
+  _browser = resolved.browser;
+  _context = resolved.context;
+  _ownsBrowser = resolved.owns;
   return _context;
 }
 
@@ -509,7 +530,7 @@ async function readBlobImageFromPage(page, blobUrl) {
       fetchError = String(error);
     }
 
-    // Firefox/Camoufox on chatgpt.com can reject fetch(blob:...) with NetworkError.
+    // Some browser sessions can reject fetch(blob:...) with NetworkError.
     // Fallback to the rendered image element + canvas extraction for blob URLs.
     try {
       const decoded = await decodeBlobUrlViaCanvas(url);

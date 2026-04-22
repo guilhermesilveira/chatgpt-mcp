@@ -21,6 +21,7 @@ function baseDir() { return getHome(); }
 function requestsDir() { return getRequestsDir(); }
 function responsesDir() { return getResponsesDir(); }
 function imagesDir() { return getImagesDir(); }
+function agentsDir() { return join(baseDir(), 'agents'); }
 function daemonPidPath() { return getDaemonPidPath(); }
 function defaultNotifyScriptPath() { return join(homedir(), '.clawd', 'bin', 'send-to-agent.sh'); }
 
@@ -46,9 +47,9 @@ function elapsedMs(createdAt, finishedAt = null) {
 }
 
 export function normalizeAgent(agent) {
-  const raw = String(agent ?? 'default').trim();
+  const raw = String(agent ?? '_default').trim();
   const safe = raw.replace(/[^A-Za-z0-9_-]/g, '_');
-  return safe || 'default';
+  return safe || '_default';
 }
 
 function normalizeMode(mode) {
@@ -72,7 +73,7 @@ function isProModel(model) {
     || normalized.includes(' pro');
 }
 
-export function makeRequestId(agent = 'default') {
+export function makeRequestId(agent = '_default') {
   const ts = Date.now();
   const random4 = randomBytes(2).toString('hex');
   const safeAgent = normalizeAgent(agent);
@@ -83,13 +84,31 @@ export function requestPath(requestId) {
   return join(requestsDir(), `${requestId}.json`);
 }
 
-export function responsePath(requestId) {
+function legacyResponsePath(requestId) {
   return join(responsesDir(), `${requestId}.json`);
+}
+
+function agentRootDir(agent) {
+  return join(agentsDir(), normalizeAgent(agent));
+}
+
+function agentProDir(agent) {
+  return join(agentRootDir(agent), 'pro');
+}
+
+function agentImagesDir(agent) {
+  return join(agentRootDir(agent), 'images');
+}
+
+export function responsePath(requestId, agent = '_default') {
+  return join(agentProDir(agent), `${requestId}.json`);
 }
 
 export async function ensureMailboxDirs() {
   await mkdir(requestsDir(), { recursive: true });
   await mkdir(responsesDir(), { recursive: true });
+  await mkdir(imagesDir(), { recursive: true });
+  await mkdir(agentsDir(), { recursive: true });
 }
 
 async function fsyncPath(path) {
@@ -158,7 +177,7 @@ function normalizeOutputDir(outputDir) {
   return isAbsolute(outputDir) ? outputDir : resolve(process.cwd(), outputDir);
 }
 
-function deriveImageDir(requestId, createdAt, prompt, outputDir = null) {
+function deriveImageDir(requestId, createdAt, prompt, agent, outputDir = null) {
   const normalized = normalizeOutputDir(outputDir);
   if (normalized) return normalized;
 
@@ -166,7 +185,7 @@ function deriveImageDir(requestId, createdAt, prompt, outputDir = null) {
   const requestEpoch = Number(String(requestId).split('-')[0]);
   const fallbackDate = Number.isFinite(requestEpoch) ? new Date(requestEpoch) : new Date();
   const ts = Number.isNaN(parsedCreatedAt.getTime()) ? fallbackDate : parsedCreatedAt;
-  return join(imagesDir(), `${formatTimestamp(ts)}-${slugifyPrompt(prompt)}`);
+  return join(agentImagesDir(agent), `${formatTimestamp(ts)}-${slugifyPrompt(prompt)}`);
 }
 
 export async function submit(prompt, opts = {}) {
@@ -176,7 +195,8 @@ export async function submit(prompt, opts = {}) {
 
   await ensureMailboxDirs();
 
-  const requestId = makeRequestId(opts.agent);
+  const agent = normalizeAgent(opts.agent);
+  const requestId = makeRequestId(agent);
   const createdAt = nowIso();
   const mode = normalizeMode(opts.mode);
   const model = mode === 'image'
@@ -187,19 +207,20 @@ export async function submit(prompt, opts = {}) {
         return opts.model ?? 'gpt-5';
       })()
     : (opts.model ?? null);
-  const response_path = responsePath(requestId);
+  const response_path = responsePath(requestId, agent);
   const image_dir = mode === 'image'
-    ? deriveImageDir(requestId, createdAt, prompt, opts.output_dir ?? null)
+    ? deriveImageDir(requestId, createdAt, prompt, agent, opts.output_dir ?? null)
     : undefined;
   const request = {
     request_id: requestId,
     state: 'pending',
     prompt,
-    agent: normalizeAgent(opts.agent),
+    agent,
     model,
     thinking: opts.thinking ?? null,
     fresh: Boolean(opts.fresh),
     mode,
+    response_path,
     output_dir: mode === 'image'
       ? image_dir
       : normalizeOutputDir(opts.output_dir ?? null),
@@ -218,8 +239,47 @@ export async function readRequest(requestId) {
   return readJsonIfExists(requestPath(requestId));
 }
 
+async function firstExistingResponse(requestId, request = null) {
+  const candidates = [];
+  const seen = new Set();
+  const push = (candidate) => {
+    if (!candidate || seen.has(candidate)) return;
+    seen.add(candidate);
+    candidates.push(candidate);
+  };
+
+  if (request?.response_path) push(request.response_path);
+  if (request?.agent) push(responsePath(requestId, request.agent));
+  push(legacyResponsePath(requestId));
+  push(responsePath(requestId));
+
+  for (const candidate of candidates) {
+    const payload = await readJsonIfExists(candidate);
+    if (payload) return payload;
+  }
+
+  if (request) return null;
+
+  let agents = [];
+  try {
+    agents = await readdir(agentsDir(), { withFileTypes: true });
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+
+  for (const entry of agents) {
+    if (!entry.isDirectory()) continue;
+    const candidate = join(agentsDir(), entry.name, 'pro', `${requestId}.json`);
+    const payload = await readJsonIfExists(candidate);
+    if (payload) return payload;
+  }
+
+  return null;
+}
+
 export async function readResponse(requestId) {
-  return readJsonIfExists(responsePath(requestId));
+  const request = await readRequest(requestId);
+  return firstExistingResponse(requestId, request);
 }
 
 export async function listRequestIds() {
@@ -265,7 +325,10 @@ export async function removeRequest(requestId) {
 }
 
 export async function writeResponseVerified(requestId, response) {
-  const path = responsePath(requestId);
+  const request = await readRequest(requestId);
+  const path = request?.response_path
+    ?? response?.response_path
+    ?? responsePath(requestId, response?.agent ?? request?.agent);
   await atomicWriteJson(path, response);
   await fsyncPath(path);
 
@@ -310,7 +373,7 @@ export async function status(requestId) {
   if (response) {
     return {
       state: response.state,
-      agent: response.agent ?? 'default',
+      agent: response.agent ?? '_default',
       elapsed_ms: response.elapsed_ms ?? elapsedMs(response.created_at, response.finished_at),
       error: response.error ?? undefined,
     };
@@ -320,7 +383,7 @@ export async function status(requestId) {
   if (request) {
     return {
       state: request.state ?? 'pending',
-      agent: request.agent ?? 'default',
+      agent: request.agent ?? '_default',
       elapsed_ms: elapsedMs(request.created_at),
       error: request.error ?? undefined,
     };
@@ -328,7 +391,7 @@ export async function status(requestId) {
 
   return {
     state: 'error',
-    agent: 'default',
+    agent: '_default',
     elapsed_ms: 0,
     error: `request_id_not_found:${requestId}`,
   };
@@ -397,7 +460,7 @@ export async function notifyAgentIfAvailable(agent, requestId, preview, options 
   if (!existsSync(scriptPath)) return false;
 
   const useResponseRouter = Boolean(options.useResponseRouter);
-  const response_path = options.responsePath ?? responsePath(requestId);
+  const response_path = options.responsePath ?? responsePath(requestId, agent);
   const image_dir = options.imageDir ?? null;
   const file_count = Number.isFinite(options.fileCount) ? options.fileCount : 0;
   const request_brief = briefText(options.requestBrief ?? '');

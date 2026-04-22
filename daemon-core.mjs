@@ -58,6 +58,7 @@ export async function processClaimedRequest(input) {
       request_id: requestId,
       state: 'complete',
       agent,
+      response_path: active.response_path ?? null,
       text: result?.text ?? '',
       files: Array.isArray(result?.files) ? result.files : [],
       mode: active.mode ?? 'text',
@@ -75,6 +76,7 @@ export async function processClaimedRequest(input) {
     page = null;
 
     await notifyAgentIfAvailable(agent, requestId, response.text, {
+      responsePath: active.response_path ?? undefined,
       imageDir: response.image_dir,
       fileCount: response.files.length,
       requestBrief: briefPrompt(active.prompt),
@@ -96,6 +98,7 @@ export async function processClaimedRequest(input) {
       request_id: requestId,
       state: 'error',
       agent,
+      response_path: request?.response_path ?? null,
       text: '',
       files: [],
       mode: request?.mode ?? 'text',
@@ -111,6 +114,7 @@ export async function processClaimedRequest(input) {
       await writeResponseVerified(requestId, response);
       await removeRequest(requestId);
       await notifyAgentIfAvailable(agent, requestId, message, {
+        responsePath: request?.response_path ?? undefined,
         requestBrief: briefPrompt(request?.prompt),
       });
     } catch (persistError) {

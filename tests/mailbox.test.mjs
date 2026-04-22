@@ -36,12 +36,13 @@ test('submit creates request file and pending status', async () => {
   await withMailboxHome(async () => {
     const { request_id, response_path } = await submit('hello world', { agent: 'foo' });
     assert.match(request_id, /^\d+-[a-f0-9]{4}-foo$/);
-    assert.equal(response_path, responsePath(request_id));
+    assert.equal(response_path, responsePath(request_id, 'foo'));
 
     const req = JSON.parse(await readFile(requestPath(request_id), 'utf8'));
     assert.equal(req.prompt, 'hello world');
     assert.equal(req.state, 'pending');
     assert.equal(req.agent, 'foo');
+    assert.equal(req.response_path, responsePath(request_id, 'foo'));
 
     const s = await status(request_id);
     assert.equal(s.state, 'pending');
@@ -59,15 +60,25 @@ test('submit in image mode returns deterministic image_dir and request output_di
   await withMailboxHome(async (home) => {
     const { request_id, response_path, image_dir } = await submit('Draw a red circle', { agent: 'img', mode: 'image' });
     assert.match(request_id, /^\d+-[a-f0-9]{4}-img$/);
-    assert.equal(response_path, responsePath(request_id));
+    assert.equal(response_path, responsePath(request_id, 'img'));
     assert.ok(image_dir, 'image_dir should be returned for mode=image');
-    assert.ok(image_dir.startsWith(join(home, 'images')), 'image_dir should use mailbox image root');
+    assert.ok(image_dir.startsWith(join(home, 'agents', 'img', 'images')), 'image_dir should use per-agent image root');
 
     const req = JSON.parse(await readFile(requestPath(request_id), 'utf8'));
     assert.equal(req.mode, 'image');
+    assert.equal(req.response_path, responsePath(request_id, 'img'));
     assert.equal(req.output_dir, image_dir);
     assert.equal(req.image_dir, image_dir);
     assert.equal(req.model, 'gpt-5');
+  });
+});
+
+test('submit without agent uses _default agent directory', async () => {
+  await withMailboxHome(async () => {
+    const { request_id, response_path, image_dir } = await submit('Draw a blue square', { mode: 'image' });
+    assert.match(request_id, /^\d+-[a-f0-9]{4}-_default$/);
+    assert.equal(response_path, responsePath(request_id, '_default'));
+    assert.ok(image_dir?.includes('/agents/_default/images/'));
   });
 });
 
@@ -179,7 +190,7 @@ test('notification hook calls runner when send-to-agent script exists', async ()
     assert.equal(called[0], 'foo');
     assert.equal(
       called[1],
-      `exocortex-chatgpt response ready: 123 at ${join(home, 'responses', '123.json')} — preview: ${'x'.repeat(100)}`,
+      `exocortex-chatgpt response ready: 123 at ${join(home, 'agents', 'foo', 'pro', '123.json')} — preview: ${'x'.repeat(100)}`,
     );
 
     called = null;
@@ -194,7 +205,7 @@ test('notification hook calls runner when send-to-agent script exists', async ()
     assert.equal(called[0], 'foo');
     assert.equal(
       called[1],
-      `exocortex-chatgpt images ready: 456 in /tmp/chatgpt-images — 2 file(s). Response at ${join(home, 'responses', '456.json')}.`,
+      `exocortex-chatgpt images ready: 456 in /tmp/chatgpt-images — 2 file(s). Response at ${join(home, 'agents', 'foo', 'pro', '456.json')}.`,
     );
 
     called = null;
@@ -206,10 +217,10 @@ test('notification hook calls runner when send-to-agent script exists', async ()
     assert.equal(okRouted, true);
     assert.ok(called, 'runner should be called for routed notifications');
     assert.equal(called[0], 'foo');
-    assert.equal(called[1], join(home, 'responses', '789.json'));
+    assert.equal(called[1], join(home, 'agents', 'foo', 'pro', '789.json'));
     assert.equal(
       called[2],
-      `exocortex-chatgpt response ready: 789 at ${join(home, 'responses', '789.json')} — preview: preview`,
+      `exocortex-chatgpt response ready: 789 at ${join(home, 'agents', 'foo', 'pro', '789.json')} — preview: preview`,
     );
 
     const missing = await notifyAgentIfAvailable('foo', '123', 'preview', {
@@ -217,6 +228,32 @@ test('notification hook calls runner when send-to-agent script exists', async ()
       runner: async () => { throw new Error('should not run'); },
     });
     assert.equal(missing, false);
+  });
+});
+
+test('fetch and status can read legacy flat responses path for backward compatibility', async () => {
+  await withMailboxHome(async (home) => {
+    const request_id = 'legacy-flat-1';
+    const finished_at = new Date().toISOString();
+    await atomicWriteJson(join(home, 'responses', `${request_id}.json`), {
+      request_id,
+      state: 'complete',
+      agent: 'legacy',
+      text: 'legacy-response',
+      files: [],
+      created_at: finished_at,
+      started_at: finished_at,
+      finished_at,
+      elapsed_ms: 0,
+    });
+
+    const s = await status(request_id);
+    assert.equal(s.state, 'complete');
+    assert.equal(s.agent, 'legacy');
+
+    const f = await fetch(request_id);
+    assert.equal(f.complete, true);
+    assert.equal(f.text, 'legacy-response');
   });
 });
 

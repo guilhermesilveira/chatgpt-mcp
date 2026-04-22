@@ -1,14 +1,6 @@
 import { z } from 'zod';
 import {
-  readLast,
   status as sessionStatus,
-  newChat,
-  setModel,
-  getModel,
-  setThinking,
-  getThinking,
-  stop,
-  generateImage,
 } from './browser-controller.mjs';
 import {
   ensureDaemonRunning,
@@ -20,15 +12,7 @@ import {
 
 export function registerMcpTools(server, deps = {}) {
   const d = {
-    readLast,
     sessionStatus,
-    newChat,
-    setModel,
-    getModel,
-    setThinking,
-    getThinking,
-    stop,
-    generateImage,
     ensureDaemonRunning,
     fetchRequest,
     queuedQuery,
@@ -58,22 +42,6 @@ export function registerMcpTools(server, deps = {}) {
     return { content: [{ type: 'text', text: result.text }] };
   });
 
-  server.registerTool('generate_image', {
-    title: 'Generate image(s) with ChatGPT',
-    description: 'BLOCKING up to 3min. Agents prefer submit_image (non-blocking, correctly-routed). This sync tool is for CLI and interactive single-user use. Sends an image-generation prompt, waits for completion (up to 3 minutes), downloads images from the latest assistant response, and returns local file paths.',
-    inputSchema: {
-      prompt: z.string().min(1),
-      output_dir: z.string().optional().describe('Optional output directory. Defaults to <CHATGPT_MCP_HOME>/images/<timestamp>-<slug>/ (or ~/.chatgpt-mcp/images/... by default).'),
-      fresh: z.boolean().optional().describe('Start a new chat before sending.'),
-      model: z.string().optional().describe('Switch to this model first (matches by visible name).'),
-      thinking: z.string().optional().describe('Thinking level: "standard" or "longer" (Pro/Thinking models only).'),
-      key: z.string().optional(),
-    },
-  }, async ({ prompt, output_dir, fresh, model, thinking }) => {
-    const result = await d.generateImage(prompt, { output_dir, fresh, model, thinking });
-    return { content: [{ type: 'text', text: JSON.stringify(result) }] };
-  });
-
   server.registerTool('submit_pro', {
     title: 'Submit async GPT-5 Pro request',
     description: 'Submit heavy-reasoning prompt to GPT-5 Pro (Extended Pro). Returns immediately with { request_id, response_path }. File at response_path will contain the text response when ready (typically 30s–30min). Use this for: architecture decisions, debugging hard problems, deep analysis, spec writing. Agents: combine with sleep to avoid wasting context while waiting.',
@@ -85,7 +53,7 @@ export function registerMcpTools(server, deps = {}) {
     },
   }, async ({ prompt, agent, fresh }) => {
     await d.ensureDaemonRunning();
-    const result = await d.submit(prompt, { agent, model: 'pro', thinking: 'longer', mode: 'text', fresh });
+    const result = await d.submit(prompt, { agent, model: 'pro', thinking: 'extended', mode: 'text', fresh });
     return {
       content: [{
         type: 'text',
@@ -141,68 +109,5 @@ export function registerMcpTools(server, deps = {}) {
   }, async ({ request_id }) => {
     const payload = await d.fetchRequest(request_id);
     return { content: [{ type: 'text', text: JSON.stringify(payload) }] };
-  });
-
-  server.registerTool('read_last_response', {
-    title: 'Read last ChatGPT response',
-    description: 'Reads the last assistant message from the active tab without sending anything.',
-    inputSchema: { key: z.string().optional() },
-  }, async () => {
-    const { text } = await d.readLast();
-    return { content: [{ type: 'text', text }] };
-  });
-
-  server.registerTool('new_chat', {
-    title: 'Open a new ChatGPT conversation',
-    description: 'Starts a fresh chat.',
-    inputSchema: { key: z.string().optional() },
-  }, async () => {
-    await d.newChat();
-    return { content: [{ type: 'text', text: 'ok' }] };
-  });
-
-  server.registerTool('set_model', {
-    title: 'Switch ChatGPT model',
-    description: 'Opens the model switcher and selects the item whose visible name contains the given string.',
-    inputSchema: { name: z.string().min(1), key: z.string().optional() },
-  }, async ({ name }) => {
-    const { model } = await d.setModel(name);
-    return { content: [{ type: 'text', text: model ?? name }] };
-  });
-
-  server.registerTool('get_model', {
-    title: 'Current ChatGPT model',
-    description: 'Returns the label of the currently selected model.',
-    inputSchema: { key: z.string().optional() },
-  }, async () => {
-    const m = await d.getModel();
-    return { content: [{ type: 'text', text: m ?? '' }] };
-  });
-
-  server.registerTool('set_thinking', {
-    title: 'Set thinking/reasoning level',
-    description: 'Sets the thinking level on Pro/Thinking models. Accepts "standard" or "longer".',
-    inputSchema: { level: z.string().min(1), key: z.string().optional() },
-  }, async ({ level }) => {
-    const { level: l } = await d.setThinking(level);
-    return { content: [{ type: 'text', text: l }] };
-  });
-
-  server.registerTool('get_thinking', {
-    title: 'Current thinking level',
-    description: 'Returns the current thinking level label, or empty if not applicable.',
-    inputSchema: { key: z.string().optional() },
-  }, async () => {
-    const l = await d.getThinking();
-    return { content: [{ type: 'text', text: l ?? '' }] };
-  });
-
-  server.registerTool('stop', {
-    title: 'Stop current generation',
-    description: 'Clicks the stop-generating button if a response is streaming.',
-    inputSchema: { key: z.string().optional() },
-  }, async () => {
-    await d.stop();
-    return { content: [{ type: 'text', text: 'ok' }] };
   });
 }
