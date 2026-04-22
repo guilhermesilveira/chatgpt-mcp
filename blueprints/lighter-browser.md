@@ -7,9 +7,11 @@ Architecture stance
 Camoufox is the approved default target.
 Research did not produce a clearly lighter browser that still satisfies all three requirements at once: full JS-rendered ChatGPT compatibility, anti-detection/stealth, and practical Playwright-compatible automation. The only meaningfully “lighter” fallback is reusing a system-installed Chrome/Chromium binary, but that does not reduce runtime RAM and weakens the stealth posture. Because this product’s core risk is ChatGPT detection and session breakage, the blueprint should proceed assuming Camoufox unless a short live spike proves it cannot support the required session-sharing architecture.
 
-This is not a drop-in dependency swap. The live codebase is built around Chromium CDP attach semantics. Firefox/Camoufox can preserve persistent profile state, but it is unlikely to preserve the current “launch once, attach later from other processes over CDP” contract. The implementation must therefore either:
+This is not a drop-in dependency swap. The live codebase is built around Chromium CDP attach semantics, one-shot CLI teardown, and patchright-specific browser acquisition. Firefox/Camoufox can preserve persistent profile state, but it is unlikely to preserve the current “launch once, attach later from other processes over CDP” contract. The implementation must therefore either:
 1. prove a viable attach/reuse path for Camoufox in this runtime, or
 2. explicitly collapse browser ownership into one long-lived process/service and route all browser work through it.
+
+That fallback is only safe if CLI/controller teardown semantics are changed first. Today cli.mjs wraps most one-shot commands in runController(), which always calls browser-controller.shutdown() in finally. Combined with browser-controller self-launching an owned context when CDP attach is unavailable, a naive owner-service migration would turn status/query/image/model/thinking/last/new/stop into “launch browser, do one action, immediately close browser.” Batch 1 must therefore treat runController()/shutdown() ownership semantics as a blocking architecture decision, not an implementation detail.
 
 Approved product framing to preserve in docs
 README and package metadata should position this repo as:
@@ -54,12 +56,12 @@ Real codebase validation findings
    - The concrete launch/attach logic lives in browser-controller.mjs and launcher.mjs.
    The blueprint must target those files first, not daemon.mjs as the primary browser launcher.
 
-8. Profile path handling is already inconsistent in the live repo.
+8. Profile and runtime-path handling is already inconsistent in the live repo.
    - browser-controller.mjs uses CHATGPT_MCP_HOME || ~/.chatgpt-mcp
-   - mailbox.mjs also uses CHATGPT_MCP_HOME || ~/.chatgpt-mcp
+   - mailbox.mjs also uses CHATGPT_MCP_HOME || ~/.chatgpt-mcp for requests, responses, images, and daemon pid
    - launcher.mjs hardcodes ~/.chatgpt-mcp and ignores CHATGPT_MCP_HOME
    - http-api.mjs hardcodes ~/.chatgpt-mcp for token storage
-   This is a real boundary bug risk for any browser-profile migration and must be normalized as part of the work.
+   This is a real boundary bug risk for any browser-profile migration and must be normalized across every persisted runtime artifact, not just the browser profile or endpoint file.
 
 9. Off-screen behavior today is Chromium-flag based, not generic.
    - launcher.mjs uses --window-position=-2000,-2000 and --window-size=1200,900 when not visible.
@@ -79,7 +81,14 @@ Real codebase validation findings
    The documentation surface is materially out of date once the backend changes.
 
 Research summary for backend choice
-Camoufox remains the best candidate. Research did not identify a browser lighter than Camoufox that also keeps full JS rendering and anti-detection with a practical Playwright-compatible Node story. The only serious alternative is using an already installed system Chrome/Chromium binary, which may lower install footprint but does not lower runtime RAM and materially weakens the stealth posture. Therefore the only acceptable reason to abandon Camoufox would be a failed runtime spike around persistent session reuse, selector/render compatibility, or authenticated image download.
+Camoufox remains the best candidate. Research did not identify a browser lighter than Camoufox that also keeps full JS rendering and anti-detection with a practical Playwright-compatible Node story. The only serious alternative is using an already installed system Chrome/Chromium binary, which may lower install footprint but does not lower runtime RAM and materially weakens the stealth posture. Therefore the only acceptable reason to abandon Camoufox would be a failed runtime spike around persistent session reuse, selector/render compatibility, authenticated image download, or package/API incompatibility.
+
+Validated package-level risk that must be handled up front
+A pinned local extraction of camoufox@0.1.19 shows this is not just a dependency rename:
+- the package exposes a separate browser-install flow and throws “Please run `camoufox fetch` to install.” when the browser binary is missing
+- its exported Node API is wrapper-shaped around Camoufox(...)/NewBrowser(...) and data_dir-based persistent mode, not a chromium BrowserType with connectOverCDP
+- it pins playwright-core@^1.54.1, while the current repo rides patchright@^1.59.4
+This means Batch 1 must explicitly prove the exact adapter surface, binary provisioning path, and Playwright-version compatibility before any controller migration starts.
 
 Boundary crossings to validate explicitly
 1. CLI/launcher process -> browser profile directory -> later browser owner/consumer
@@ -100,7 +109,16 @@ Boundary crossings to validate explicitly
    - Compatibility rule: Firefox/Camoufox must either supply an equivalent attach contract or the codebase must replace CDP with a service-owned controller boundary
    - Survivability rule: if attach fails, the system must not accidentally launch a second competing profile owner against the same session
 
-3. ChatGPT DOM -> selectors.json -> controller actions
+3. Browser owner process -> install/bootstrap contract -> executable browser binary
+   - Producer: package install flow, first-run bootstrap, or manual operator setup
+   - Artifact: downloaded Camoufox browser binary plus any cached install metadata
+   - Transport/storage: npm dependency tree plus local browser-install cache/directory
+   - Consumer: launcher.mjs/browser-controller.mjs at first launch
+   - Resolution rule: the runtime must know exactly where the browser binary comes from on a fresh machine
+   - Compatibility rule: the chosen install path must match the exact package API used by the controller
+   - Survivability rule: missing-binary failure must produce a clear operator/developer error, not a misleading browser-launch failure
+
+4. ChatGPT DOM -> selectors.json -> controller actions
    - Producer: ChatGPT web app rendered under Firefox/Camoufox
    - Artifact: concrete DOM structure for model picker, thinking pill, prompt input, stop button, new chat button, and assistant message/image nodes
    - Transport/storage: live DOM + selectors.json
@@ -109,7 +127,7 @@ Boundary crossings to validate explicitly
    - Compatibility rule: localized selectors, image nodes, and model-menu structure must still resolve under Firefox
    - Survivability rule: selector misses must fail loudly in check/e2e flow before production rollout
 
-4. Assistant image artifacts -> browser download path -> filesystem verification -> tab closure
+5. Assistant image artifacts -> browser download path -> filesystem verification -> tab closure
    - Producer: ChatGPT image response rendered in page or backed by authenticated URL/blob
    - Artifact: blob payload or authenticated GET response, then local files under image_dir
    - Transport/storage: page.evaluate fetch for blob URLs, page.context().request for network URLs, local filesystem files, responses/<id>.json metadata
@@ -118,7 +136,7 @@ Boundary crossings to validate explicitly
    - Compatibility rule: Firefox/Camoufox must support the request/download APIs used by browser-controller.mjs or an equivalent authenticated fetch path
    - Survivability rule: source tab stays open until files exist, have non-zero size, and any PNG has valid magic bytes
 
-5. Async request lifecycle -> response JSON -> agent notification script
+6. Async request lifecycle -> response JSON -> agent notification script
    - Producer: daemon-core.mjs
    - Artifact: responses/<id>.json and optional image_dir/file_count notification payload
    - Transport/storage: local filesystem and ~/.clawd/bin/send-to-agent.sh invocation
@@ -131,13 +149,17 @@ Assumptions and unresolved decisions
 Blocking assumptions
 1. Camoufox or its surrounding Playwright integration can support a durable, single-login profile usable by this repo on macOS in headed mode.
 2. A practical replacement exists for the current CDP attach contract, either through a verified Camoufox attach mechanism or by moving to a single browser-owner process with controller RPC semantics.
-3. page.context().request or an equivalent authenticated download path works under the chosen Firefox backend for ChatGPT’s generated image URLs.
+3. CHATGPT_MCP_HOME normalization must cover every persisted runtime artifact: profile, requests, responses, images, daemon pid, HTTP token, and any future owner-service endpoint file.
+4. page.context().request or an equivalent authenticated download path works under the chosen Firefox backend for ChatGPT’s generated image URLs.
+5. The chosen provisioning flow for Camoufox browser binaries is documented and reproducible on a fresh machine.
 
 Unresolved design decisions that must be settled early
 1. Keep launcher as a visible/off-screen standalone process with an attach endpoint, or retire launcher in favor of a single owner inside browser-controller/daemon/server lifecycle.
 2. Preserve the cdp file as a compatibility shim with new semantics, or replace it with a differently named service endpoint file to avoid lying about CDP.
 3. Whether the first implementation should preserve both CLI launch mode and auto-launch fallback, or temporarily require one canonical browser owner path to reduce profile-locking risk.
-4. Whether selector drift in Firefox should be solved only in selectors.json, or whether controller code needs backend-specific selector branches.
+4. Whether one-shot CLI/HTTP/MCP consumers are allowed to self-launch the browser at all once a service-owned architecture is chosen, or must fail closed and require an already-running owner.
+5. Whether selector drift in Firefox should be solved only in selectors.json, or whether controller code needs backend-specific selector branches.
+6. Which exact Camoufox adapter surface is adopted in Node: the package wrapper directly, or plain Playwright Firefox with a thinner stealth layer if package/API or version skew blocks the wrapper path.
 
 Pre-design failure modes
 1. Live-session attach disappears
@@ -200,6 +222,21 @@ Pre-design failure modes
    - How it breaks: docs still say Chrome/CDP/patchright while the shipped backend is Firefox/Camoufox or service-owned.
    - Test that catches it: doc review against actual launch/runtime commands and a fresh-machine smoke test following README only.
 
+13. Owner-service fallback is broken by one-shot teardown
+   - What breaks: separate-process reuse, login persistence, and any service-owned architecture.
+   - How it breaks: cli.mjs runController() always calls shutdown(), so one-shot consumers launch the owner and immediately kill it when self-launch remains possible.
+   - Test that catches it: with CDP attach removed or disabled, run launch/status/query from separate processes and confirm the owner remains alive after one-shot commands.
+
+14. Fresh-machine launch fails because the browser binary is not provisioned
+   - What breaks: local setup, CI smoke, and README verification.
+   - How it breaks: Camoufox package install succeeds but the actual browser binary is absent until an explicit fetch/bootstrap step runs.
+   - Test that catches it: start from a clean install directory and run the documented first-launch flow without prior manual setup.
+
+15. Adapter/API mismatch blocks migration before e2e starts
+   - What breaks: controller acquisition and launch.
+   - How it breaks: implementation assumes a chromium-like BrowserType API even though the chosen Camoufox package uses a different wrapper surface, persistent data_dir contract, and older playwright-core pin.
+   - Test that catches it: Batch 1 spike that imports the exact package API, launches a persistent profile on macOS, and records the resolved browser/context ownership model.
+
 Runtime verification protocol
 Acceptance mode
 Primary acceptance is e2e-only, per approval guidance. npm test remains a baseline regression smoke check, but it is not the signoff gate for this feature.
@@ -248,26 +285,31 @@ Required runtime verification after each batch where relevant
 
 Batch plan
 
-Batch 1: Prove the browser-owner contract before touching downstream behavior
+Batch 1: Prove the browser-owner, adapter, and provisioning contracts before touching downstream behavior
 Why this batch order matters
-If the repo cannot preserve a single authenticated browser owner with Camoufox, all later selector and image work is wasted. The first batch must settle the highest-risk architecture boundary: live session ownership and profile reuse.
+If the repo cannot preserve a single authenticated browser owner with Camoufox, or cannot even launch the real package API on a provisioned binary, all later selector and image work is wasted. The first batch must settle the highest-risk architecture boundaries: owner lifetime, package adapter shape, binary bootstrap, and runtime-home resolution.
 
 Tasks
-1. WHAT: Replace the current implicit “Chromium over CDP” assumption with a validated browser-owner contract for the chosen backend, including how later processes discover and reuse the authenticated session.
-   WHY: The current architecture depends on connectOverCDP; without an explicit replacement contract, the migration will ship a broken multi-process runtime.
+1. WHAT: Prove the exact Node adapter surface for the chosen backend, including import shape, persistent-profile launch contract, and the absence or presence of any attach/reuse mechanism comparable to connectOverCDP.
+   WHY: Camoufox’s package API is not shaped like the current patchright chromium BrowserType, so the migration needs a concrete proof before controller work begins.
 
-2. WHAT: Normalize browser state resolution so launcher, controller, mailbox, and any endpoint-discovery files all use the same runtime-resolved base directory and profile path.
-   WHY: The live repo already splits between CHATGPT_MCP_HOME-aware and homedir-hardcoded paths, which will cause profile drift and false debugging signals during migration.
+2. WHAT: Decide and implement the browser-owner lifetime contract for one-shot CLI/HTTP/MCP consumers, including whether self-launch remains allowed and how runController()/shutdown() must change to avoid killing the only owner.
+   WHY: A service-owned fallback is unsafe if one-shot commands still self-launch and immediately close owned contexts.
 
-3. WHAT: Validate headed/off-screen launch behavior for the new backend on macOS and record the supported visible/default semantics.
+3. WHAT: Normalize every persisted runtime artifact under one shared runtime-path contract: profile, requests, responses, images, daemon pid, HTTP token, and any endpoint-discovery file used by the owner architecture.
+   WHY: The live repo already has split path resolution, and partial normalization would leave the product with two competing runtime homes.
+
+4. WHAT: Choose and validate the browser-binary provisioning path for fresh machines and clean installs.
+   WHY: The extracted package requires a separate browser-install flow, so first launch and README verification will fail unless provisioning is owned explicitly.
+
+5. WHAT: Validate headed/off-screen launch behavior for the new backend on macOS and record the supported visible/default semantics.
    WHY: Current window-position flags are Chromium-specific; the product must remain usable on Fred’s machine without surprise focus theft.
 
-4. WHAT: Decide and document whether launcher remains a first-class process, becomes a compatibility shim, or is replaced by a single owner-service pattern.
-   WHY: README, CLI semantics, and process boundaries all depend on this decision, and the later batches need a stable ownership model.
-
 Batch verification
-- Separate-process launch + status reuse works with one authenticated session.
-- CHATGPT_MCP_HOME test shows all runtime artifacts under one directory.
+- A Batch 1 spike launches the exact chosen package/API with a persistent profile on macOS.
+- Separate-process launch + status reuse works with one authenticated session, or the blueprint explicitly locks in a service-owned replacement and forbids unsafe self-launch.
+- CHATGPT_MCP_HOME test shows profile, requests, responses, images, daemon pid, token, and endpoint artifacts under one directory.
+- Fresh-machine/bootstrap test proves the browser binary is provisioned by the documented flow.
 - Visible/default launch behavior is documented from a real macOS run.
 
 Batch 2: Migrate the controller without regressing core ChatGPT interaction
@@ -343,12 +385,14 @@ Execution order and dependencies
 4. Batch 4 depends on the previous batches because docs and measurements must describe the real shipped behavior, not intent.
 
 Release blockers
-1. No verified replacement for connectOverCDP/live browser reuse.
-2. Any regression in per-request ephemeral tab isolation.
-3. Any regression in image routing to gpt-5 or in disk-confirmed-first tab closure ordering.
-4. Any unresolved mismatch between launcher/controller/base-dir resolution.
-5. No measured evidence that memory use is materially lower than the current Chromium path.
-6. README still describing the product as a patchright/CDP Chrome tool after migration.
+1. No verified replacement for connectOverCDP/live browser reuse, and no explicit owner-service rule for one-shot CLI teardown.
+2. No proven adapter path for the chosen Camoufox package/API and Playwright version compatibility.
+3. No explicit provisioning path for the Camoufox browser binary on fresh machines.
+4. Any regression in per-request ephemeral tab isolation.
+5. Any regression in image routing to gpt-5 or in disk-confirmed-first tab closure ordering.
+6. Any unresolved mismatch between launcher/controller/http-api/mailbox runtime-path resolution.
+7. No measured evidence that memory use is materially lower than the current Chromium path.
+8. README still describing the product as a patchright/CDP Chrome tool after migration.
 
 Definition of done
 1. The repo no longer depends on patchright for the shipped browser backend.
