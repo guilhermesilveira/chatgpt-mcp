@@ -1,7 +1,7 @@
 {
-  "name": "@guilhermesilveira/chatgpt-mcp",
+  "name": "chatgpt-mcp",
   "version": "0.1.1",
-  "description": "Local MCP server that drives ChatGPT web via patchright (persistent login, CDP-shared session).",
+  "description": "MCP server for ChatGPT Pro reasoning and image generation. Async, non-blocking, works with any MCP client.",
   "type": "module",
   "bin": {
     "chatgpt-mcp": "./cli.mjs"
@@ -13,11 +13,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/guilhermesilveira/chatgpt-mcp.git"
+    "url": "git+https://github.com/fredluz/chatgpt-mcp.git"
   },
-  "homepage": "https://github.com/guilhermesilveira/chatgpt-mcp",
+  "homepage": "https://github.com/fredluz/chatgpt-mcp",
   "bugs": {
-    "url": "https://github.com/guilhermesilveira/chatgpt-mcp/issues"
+    "url": "https://github.com/fredluz/chatgpt-mcp/issues"
   },
   "engines": {
     "node": ">=18"
@@ -32,6 +32,7 @@
   ],
   "scripts": {
     "launch": "node cli.mjs launch",
+    "daemon": "node cli.mjs daemon",
     "mcp": "node cli.mjs server",
     "http": "node cli.mjs http",
     "check": "node cli.mjs check",

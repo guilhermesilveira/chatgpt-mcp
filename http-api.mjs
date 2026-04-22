@@ -3,20 +3,20 @@
 //   GET  /status                → { status: "ready"|"busy"|"not_logged_in" }
 //   POST /query   { prompt }    → { text }
 //   GET  /last                  → { text }
-// Token: ~/.chatgpt-mcp/token (auto-created on first run).
+// Token: <CHATGPT_MCP_HOME>/token (or ~/.chatgpt-mcp/token by default).
 
 import http from 'node:http';
 import { randomBytes } from 'node:crypto';
-import { homedir } from 'node:os';
 import { mkdirSync, readFileSync, writeFileSync, existsSync, chmodSync } from 'node:fs';
-import { join } from 'node:path';
 import {
-  query, readLast, status, newChat, setModel, getModel,
+  readLast, status, newChat, setModel, getModel,
   setThinking, getThinking, stop,
 } from './browser-controller.mjs';
+import { query as queuedQuery } from './mailbox.mjs';
+import { getHome, getTokenPath } from './runtime-paths.mjs';
 
-const DIR = join(homedir(), '.chatgpt-mcp');
-const TOKEN_PATH = join(DIR, 'token');
+const DIR = getHome();
+const TOKEN_PATH = getTokenPath();
 mkdirSync(DIR, { recursive: true });
 
 function loadOrCreateToken() {
@@ -56,7 +56,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && req.url === '/query') {
       const { prompt, fresh, model, thinking } = await readBody(req);
       if (!prompt) return send(res, 400, { error: 'prompt required' });
-      const { text } = await query(prompt, { fresh, model, thinking });
+      const { text } = await queuedQuery(prompt, { fresh, model, thinking });
       return send(res, 200, { text });
     }
     if (req.method === 'GET' && req.url === '/thinking') {

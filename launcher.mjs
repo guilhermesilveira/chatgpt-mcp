@@ -1,31 +1,33 @@
 #!/usr/bin/env node
 // Long-running launcher. Opens ChatGPT with a persistent profile and
-// exposes a CDP endpoint on 127.0.0.1 so other processes (MCP server,
-// CLI, scripts) can attach to the same session concurrently.
+// exposes a CDP endpoint on 127.0.0.1 so other processes can attach.
 
 import { chromium } from 'patchright';
-import { homedir } from 'node:os';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { getCDPFilePath, getProfileDir } from './runtime-paths.mjs';
 
-const DIR = join(homedir(), '.chatgpt-mcp');
-const PROFILE_DIR = join(DIR, 'profile');
-const CDP_FILE = join(DIR, 'cdp');
+const PROFILE_DIR = getProfileDir();
+const CDP_FILE = getCDPFilePath();
 mkdirSync(PROFILE_DIR, { recursive: true });
 
 const CDP_PORT = Number(process.env.CDP_PORT || 9222);
+const VISIBLE = process.argv.includes('--visible') || process.env.CHATGPT_VISIBLE === '1';
+const chromeArgs = [
+  `--remote-debugging-port=${CDP_PORT}`,
+  '--remote-debugging-address=127.0.0.1',
+];
+if (VISIBLE) {
+  chromeArgs.unshift('--start-maximized');
+} else {
+  chromeArgs.push('--window-position=-2000,-2000', '--window-size=1200,900');
+}
 
 const context = await chromium.launchPersistentContext(PROFILE_DIR, {
   channel: 'chrome',
   headless: false,
   viewport: null,
-  args: [
-    '--start-maximized',
-    `--remote-debugging-port=${CDP_PORT}`,
-    '--remote-debugging-address=127.0.0.1',
-  ],
+  args: chromeArgs,
 });
-
 writeFileSync(CDP_FILE, `http://127.0.0.1:${CDP_PORT}\n`);
 
 const page = context.pages()[0] ?? (await context.newPage());

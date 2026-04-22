@@ -1,226 +1,183 @@
-# chatgpt-mcp
+# ChatGPT MCP: GPT-5 Pro + Image Generation for Claude Code
 
-Local MCP server that drives the ChatGPT web UI via [patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright) (a stealth Playwright fork). Keeps a persistent Chrome profile so you log in once, then Claude Code, your scripts, and a CLI can share the same ChatGPT session concurrently over CDP.
+`chatgpt-mcp` is an MCP (Model Context Protocol) server that lets any MCP client use your ChatGPT Pro account for:
 
-Exposes three surfaces on top of the same browser controller:
+- GPT-5 Pro deep reasoning
+- ChatGPT image generation
+- Async, non-blocking workflows (`submit -> do other work -> fetch later`)
 
-- **MCP server** (stdio) — for Claude Code and any MCP client.
-- **HTTP API** (localhost, bearer token) — for shell scripts and remote helpers.
-- **CLI** — `chatgpt-mcp <subcommand>`.
+If you searched for `ChatGPT MCP`, `GPT-5 Pro MCP`, `ChatGPT image generation MCP`, or `use ChatGPT from Claude Code`, this is the connector.
 
-## Features
+## Why This Exists
 
-- **Persistent login** — one-time sign-in in a dedicated Chrome profile; session survives restarts
-- **Shared session over CDP** — launcher keeps Chrome open; MCP server, HTTP API, and CLI attach to the same browser via `http://127.0.0.1:9222`
-- **Single-threaded controller** — every mutating op goes through a FIFO mutex so concurrent calls never collide
-- **Long responses** — no internal timeout on generation; a single reply can take up to an hour (deep research, Pro Thinking) without anything bailing
-- **Model switching** — `Instant` / `Thinking` / `Pro` via stable `data-testid` map
-- **Thinking-level switching** — `Standard` / `Longer` on Pro/Thinking models, matched by SVG sprite icon (locale-independent) with localized-text fallback
-- **Structured status** — reads current model + thinking level passively from the composer pill (no menus opened)
-- **Selector self-heal** — `chatgpt-mcp check` walks `selectors.json` against the live page and reports misses when ChatGPT rotates markup
+Most MCP tools are API-key based and synchronous.
+This connector is different:
 
-## Quick Start
+- Uses your own ChatGPT Pro subscription.
+- Works from Claude Code or any MCP-compatible client.
+- Built for long-running requests that should not block your agent loop.
 
-Requires Node.js 18+ and a local Google Chrome install.
+## 3-Line Setup
 
 ```bash
-npm install -g @guilhermesilveira/chatgpt-mcp   # installs `chatgpt-mcp` globally
-
-# Terminal 1 — launch Chrome, log in once
+npm install -g chatgpt-mcp
+chatgpt-mcp launch --visible
 chatgpt-mcp launch
-
-# Terminal 2 — use it
-chatgpt-mcp status
-chatgpt-mcp query "what is 2+2? one word"
 ```
 
-## How it works
+First run `--visible` to log in once to ChatGPT.
+After that, the daemon runs headless and reuses your persisted session.
 
-```
-         ┌─────────────────┐    CDP (127.0.0.1:9222)
-         │  launcher.mjs   │◀──────────────┐
-         │  (persistent    │               │
-         │   Chrome tab)   │               │
-         └─────────────────┘               │
-                                           │
-                          ┌────────────────┴──────────────┐
-                          │    browser-controller.mjs     │
-                          │    (patchright, FIFO mutex)   │
-                          └──┬────────────┬────────────┬──┘
-                             │            │            │
-                     mcp-server.mjs   http-api.mjs   cli.mjs
-                        (stdio)      (bearer token)
-```
-
-The first process to call the controller tries to attach over CDP; if the launcher isn't running, it falls back to launching its own persistent context. Either way the profile lives at `~/.chatgpt-mcp/profile/`.
-
-## CLI
-
-```bash
-chatgpt-mcp launch              # start Chrome with persistent profile + CDP
-chatgpt-mcp server              # run the MCP stdio server (for Claude Code)
-chatgpt-mcp http                # run the localhost HTTP API
-chatgpt-mcp status              # state=ready model=Pro thinking=Länger
-chatgpt-mcp query "prompt..."   # send a prompt, print the reply
-chatgpt-mcp last                # print the last assistant message
-chatgpt-mcp new                 # open a new chat
-chatgpt-mcp model               # print current model
-chatgpt-mcp model pro           # switch model
-chatgpt-mcp thinking            # print current thinking level
-chatgpt-mcp thinking longer     # switch thinking level
-chatgpt-mcp stop                # abort an in-flight generation
-chatgpt-mcp check               # selector self-heal report
-```
-
-`query` flags:
-
-```bash
-chatgpt-mcp query --fresh --model pro --thinking longer "complex question..."
-```
-
-- `--fresh` — start a new chat first.
-- `--model <name>` — switch model first. Known names: `instant`, `thinking`, `pro` (see `selectors.json → model.name_map`).
-- `--thinking <level>` — set thinking level first. Known: `standard`, `longer`.
-
-## MCP tools
-
-Registered by `mcp-server.mjs`:
-
-| Tool | Description |
-|------|-------------|
-| `query` | Send prompt, wait for full reply, return text. Supports `fresh`, `model`, `thinking`. |
-| `read_last_response` | Read the last assistant message without sending anything. |
-| `status` | JSON `{ state, model, thinking }`. |
-| `new_chat` | Open a new chat. |
-| `set_model` / `get_model` | Switch / read current model. |
-| `set_thinking` / `get_thinking` | Switch / read current thinking level. |
-| `stop` | Abort an in-flight generation. |
-
-### Wiring it into Claude Code
-
-```bash
-claude mcp add chatgpt --scope user -- chatgpt-mcp server
-```
-
-(Adjust the command if you did not `npm link`; use the absolute path to `cli.mjs server` instead.)
-
-## HTTP API
-
-```bash
-chatgpt-mcp http                # listens on 127.0.0.1:8765
-```
-
-Token is auto-generated at first run and stored at `~/.chatgpt-mcp/token` (mode 0600). Pass it as `Authorization: Bearer <token>`.
-
-```bash
-TOKEN=$(cat ~/.chatgpt-mcp/token)
-
-curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8765/status
-curl -s -H "Authorization: Bearer $TOKEN" \
-  -X POST -H "content-type: application/json" \
-  -d '{"prompt":"hello","fresh":true,"model":"pro","thinking":"longer"}' \
-  http://127.0.0.1:8765/query
-
-curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8765/last
-curl -s -H "Authorization: Bearer $TOKEN" -X POST http://127.0.0.1:8765/new
-curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8765/model
-curl -s -H "Authorization: Bearer $TOKEN" -X POST -d '{"name":"pro"}' http://127.0.0.1:8765/model
-curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8765/thinking
-curl -s -H "Authorization: Bearer $TOKEN" -X POST -d '{"level":"longer"}' http://127.0.0.1:8765/thinking
-curl -s -H "Authorization: Bearer $TOKEN" -X POST http://127.0.0.1:8765/stop
-```
-
-Request timeout on the server is disabled (`requestTimeout=0`) so a 1-hour Pro reply won't be cut off.
-
-## Selector self-heal
-
-ChatGPT's DOM changes often. If a tool starts failing:
-
-```bash
-chatgpt-mcp check
-```
-
-Walks every selector in `selectors.json` against the live page and prints `OK`/`MISS` per entry. Exits non-zero if anything is missing. Re-capture the relevant state and update `selectors.json` directly — no code changes needed.
-
-To re-capture a state:
-
-1. In Chrome DevTools Console: `copy(document.documentElement.outerHTML)`
-2. `pbpaste > dom-samples/<state>.html`
-3. Inspect the HTML and update `selectors.json`.
-
-For menus (Radix menus close on blur), enable **"Emulate a focused page"** in DevTools (Cmd+Shift+P → `focused`) or use the setTimeout trick:
-
-```js
-setTimeout(() => copy(document.documentElement.outerHTML), 5000)
-```
-
-then open the menu within 5 seconds.
-
-## Tests
-
-Pure-logic unit tests with Node's built-in test runner — no browser, no extra deps:
-
-```bash
-npm test
-```
-
-Covers the pill-text parser (`parse-pill.mjs`), CLI flag parser (`flags.mjs`), and `selectors.json` shape invariants.
-
-## Optional PM2 service
-
-If you want `chatgpt-mcp launch` to run as a service and survive reboots:
-
-```bash
-npm install -g pm2
-pm2 start chatgpt-mcp --name chatgpt-mcp -- launch
-pm2 save
-pm2 startup
-```
-
-PM2 is optional; you can also run `chatgpt-mcp launch` by hand or from a login script. Same recipe works for the HTTP API:
-
-```bash
-pm2 start chatgpt-mcp --name chatgpt-mcp-http -- http
-```
-
-Note that `launch` opens a visible Chrome window. On a headless server, that's not going to work — this project is built for local use with a real user session.
-
-## Running the MCP server directly
-
-For Claude Code users who haven't `npm link`ed:
+Then register it in `~/.claude.json`:
 
 ```json
 {
   "mcpServers": {
     "chatgpt": {
-      "command": "node",
-      "args": ["/absolute/path/to/chatgpt-mcp/cli.mjs", "server"]
+      "type": "stdio",
+      "command": "chatgpt-mcp",
+      "args": ["server"]
     }
   }
 }
 ```
 
-## Configuration
+## Prerequisites
 
-All state lives in `~/.chatgpt-mcp/`:
+- ChatGPT Pro subscription
+- Chrome installed
+- Node.js 20+
 
-| Path | What |
-|------|------|
-| `~/.chatgpt-mcp/profile/` | Chrome user data dir (login cookies, settings) |
-| `~/.chatgpt-mcp/cdp` | Current CDP URL (written by the launcher) |
-| `~/.chatgpt-mcp/token` | Bearer token for the HTTP API (mode 0600) |
+## How It Works (Honest Version)
 
-Environment variables:
+- This is browser automation against your own ChatGPT Pro session.
+- The daemon runs Chrome via `patchright` with a persistent profile.
+- Login once, then the session persists for future headless runs.
 
-| Var | Default | Notes |
-|-----|---------|-------|
-| `CDP_PORT` | `9222` | Port the launcher exposes for CDP |
-| `CHATGPTPRO_CDP` | _(read from `~/.chatgpt-mcp/cdp`)_ | Override CDP endpoint for the controller |
-| `PORT` | `8765` | HTTP API port |
+## Async Workflow (Non-Blocking)
 
-## Deployment
+Use this pattern for hard reasoning or image generation:
 
-There's no "deploy" target — this is a local service that drives a logged-in ChatGPT tab on your machine. If you need it on another machine, clone the repo there and run `chatgpt-mcp launch` + sign in there. The profile is not portable between machines.
+1. Submit work with `submit_pro` or `submit_image`.
+2. Continue other coding/agent tasks.
+3. Check `status` when convenient.
+4. Call `fetch` to retrieve final output and files.
+
+## MCP Tools (Exactly 5)
+
+1. `submit_pro`
+- Submit async GPT-5 Pro request with extended thinking.
+- Returns immediately with `request_id` and `response_path`.
+- Use for architecture decisions, deep debugging, hard analysis.
+
+2. `submit_image`
+- Submit async image generation request.
+- Returns immediately with `request_id` and `image_dir`.
+- Use for UI assets, carousel imagery, illustrations, mockups.
+
+3. `query`
+- Sync convenience for simple one-shot questions.
+- Blocking.
+
+4. `status`
+- Check daemon session status or async request status.
+
+5. `fetch`
+- Fetch async request result (text, files, completion state).
+
+## Real Usage Examples
+
+### `submit_pro`: Deep Reasoning Without Blocking
+
+Submit:
+
+```json
+{
+  "tool": "submit_pro",
+  "args": {
+    "prompt": "Analyze why our websocket reconnect logic causes duplicate subscriptions. Propose a safe refactor with rollout plan and test strategy."
+  }
+}
+```
+
+Immediate response (example):
+
+```json
+{
+  "request_id": "req_7f9c...",
+  "response_path": "~/.chatgpt-mcp/agents/readme-chatgpt-mcp/pro/req_7f9c....md"
+}
+```
+
+Do other work, then:
+
+```json
+{
+  "tool": "fetch",
+  "args": {
+    "request_id": "req_7f9c..."
+  }
+}
+```
+
+### `submit_image`: Async Image Generation
+
+Submit:
+
+```json
+{
+  "tool": "submit_image",
+  "args": {
+    "prompt": "Create a clean onboarding illustration: developer at desk, teal/orange palette, transparent background, modern flat style."
+  }
+}
+```
+
+Immediate response (example):
+
+```json
+{
+  "request_id": "img_b21a...",
+  "image_dir": "~/.chatgpt-mcp/agents/readme-chatgpt-mcp/images/img_b21a..."
+}
+```
+
+Later:
+
+```json
+{
+  "tool": "status",
+  "args": {
+    "request_id": "img_b21a..."
+  }
+}
+```
+
+Then fetch outputs:
+
+```json
+{
+  "tool": "fetch",
+  "args": {
+    "request_id": "img_b21a..."
+  }
+}
+```
+
+## Per-Agent Output Routing
+
+Each agent gets isolated output directories:
+
+- Text responses: `~/.chatgpt-mcp/agents/<agent-name>/pro/`
+- Generated images: `~/.chatgpt-mcp/agents/<agent-name>/images/`
+
+This makes concurrent multi-agent workflows safe and traceable.
+
+## Best Fit
+
+- Claude Code users who want GPT-5 Pro for difficult reasoning tasks.
+- MCP users who want ChatGPT image generation in the same toolchain.
+- Agentic workflows that need async, non-blocking submit/fetch patterns.
 
 ## License
 
