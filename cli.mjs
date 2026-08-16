@@ -3,7 +3,7 @@
 //
 //   chatgpt-mcp launch                 run the browser launcher (login + CDP host)
 //   chatgpt-mcp server                 run the MCP stdio server
-//   chatgpt-mcp http                   run the localhost HTTP API
+//   chatgpt-mcp http [--host <IP>]     run the HTTP API
 //   chatgpt-mcp status                 print ready | busy | not_logged_in
 //   chatgpt-mcp query "prompt..."      send prompt, print response
 //     flags: --fresh             start a new chat first
@@ -14,7 +14,7 @@
 //   chatgpt-mcp stop                   stop an in-progress generation
 //   chatgpt-mcp check                  self-heal report: walk selectors.json against live DOM
 
-import { parseFlags } from './flags.mjs';
+import { parseFlags, parseHttpFlags } from './flags.mjs';
 
 const [cmd, ...rest] = process.argv.slice(2);
 
@@ -41,6 +41,7 @@ try {
       break;
 
     case 'http':
+      process.env.CHATGPT_MCP_HOST = parseHttpFlags(rest).host;
       await import('./http-api.mjs');
       break;
 

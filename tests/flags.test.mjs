@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseFlags } from '../flags.mjs';
+import { parseFlags, parseHttpFlags } from '../flags.mjs';
 
 test('empty argv', () => {
   assert.deepEqual(parseFlags([]), { _: [] });
@@ -54,4 +54,28 @@ test('unknown flag passes through as positional', () => {
 test('value after --model may start with a dash (taken literally)', () => {
   // We take whatever is next — CLI callers use quoted strings anyway.
   assert.deepEqual(parseFlags(['--model', '-weird']), { _: [], model: '-weird' });
+});
+
+test('http host defaults to loopback', () => {
+  assert.deepEqual(parseHttpFlags([]), { host: '127.0.0.1' });
+});
+
+test('http --host accepts IPv4 addresses', () => {
+  assert.deepEqual(parseHttpFlags(['--host', '0.0.0.0']), { host: '0.0.0.0' });
+});
+
+test('http --host accepts equals syntax', () => {
+  assert.deepEqual(parseHttpFlags(['--host=192.168.1.10']), { host: '192.168.1.10' });
+});
+
+test('http --host requires a value', () => {
+  assert.throws(() => parseHttpFlags(['--host']), /requires an IP address/);
+});
+
+test('http --host rejects non-IP values', () => {
+  assert.throws(() => parseHttpFlags(['--host', 'localhost']), /invalid host IPv4 address/);
+});
+
+test('http rejects unknown options', () => {
+  assert.throws(() => parseHttpFlags(['--port', '9000']), /unknown http option/);
 });

@@ -5,7 +5,7 @@ Local MCP server that drives the ChatGPT web UI via [patchright](https://github.
 Exposes three surfaces on top of the same browser controller:
 
 - **MCP server** (stdio) — for Claude Code and any MCP client.
-- **HTTP API** (localhost, bearer token) — for shell scripts and remote helpers.
+- **HTTP API** (localhost by default, bearer token) — for shell scripts and remote helpers.
 - **CLI** — `chatgpt-mcp <subcommand>`.
 
 ## Features
@@ -59,7 +59,7 @@ The first process to call the controller tries to attach over CDP; if the launch
 ```bash
 chatgpt-mcp launch              # start Chrome with persistent profile + CDP
 chatgpt-mcp server              # run the MCP stdio server (for Claude Code)
-chatgpt-mcp http                # run the localhost HTTP API
+chatgpt-mcp http                # run the HTTP API (127.0.0.1 by default)
 chatgpt-mcp status              # state=ready model=Pro thinking=Länger
 chatgpt-mcp query "prompt..."   # send a prompt, print the reply
 chatgpt-mcp last                # print the last assistant message
@@ -108,9 +108,12 @@ claude mcp add chatgpt --scope user -- chatgpt-mcp server
 
 ```bash
 chatgpt-mcp http                # listens on 127.0.0.1:8765
+chatgpt-mcp http --host 0.0.0.0 # listens on every IPv4 network interface
 ```
 
 Token is auto-generated at first run and stored at `~/.chatgpt-mcp/token` (mode 0600). Pass it as `Authorization: Bearer <token>`.
+
+The default localhost address is only reachable from the same machine. Use `--host <IP>` to bind to a specific local interface, or `--host 0.0.0.0` to accept connections on every IPv4 interface. When exposing the API to a network, keep the token private and restrict access with a firewall.
 
 ```bash
 TOKEN=$(cat ~/.chatgpt-mcp/token)
