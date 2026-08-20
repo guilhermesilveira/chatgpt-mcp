@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseFlags, parseHttpFlags } from '../flags.mjs';
+import { parseFlags, parseHttpFlags, parseServerFlags } from '../flags.mjs';
 
 test('empty argv', () => {
   assert.deepEqual(parseFlags([]), { _: [] });
@@ -12,6 +12,10 @@ test('positional args only', () => {
 
 test('--fresh is a boolean flag', () => {
   assert.deepEqual(parseFlags(['--fresh']), { _: [], fresh: true });
+});
+
+test('--telegram is a boolean query flag', () => {
+  assert.deepEqual(parseFlags(['--telegram', 'hello']), { _: ['hello'], telegram: true });
 });
 
 test('--model consumes the next token', () => {
@@ -57,15 +61,25 @@ test('value after --model may start with a dash (taken literally)', () => {
 });
 
 test('http host defaults to loopback', () => {
-  assert.deepEqual(parseHttpFlags([]), { host: '127.0.0.1' });
+  assert.deepEqual(parseHttpFlags([]), { host: '127.0.0.1', telegram: false });
 });
 
 test('http --host accepts IPv4 addresses', () => {
-  assert.deepEqual(parseHttpFlags(['--host', '0.0.0.0']), { host: '0.0.0.0' });
+  assert.deepEqual(parseHttpFlags(['--host', '0.0.0.0']), {
+    host: '0.0.0.0', telegram: false,
+  });
 });
 
 test('http --host accepts equals syntax', () => {
-  assert.deepEqual(parseHttpFlags(['--host=192.168.1.10']), { host: '192.168.1.10' });
+  assert.deepEqual(parseHttpFlags(['--host=192.168.1.10']), {
+    host: '192.168.1.10', telegram: false,
+  });
+});
+
+test('http accepts --telegram with --host', () => {
+  assert.deepEqual(parseHttpFlags(['--host', '0.0.0.0', '--telegram']), {
+    host: '0.0.0.0', telegram: true,
+  });
 });
 
 test('http --host requires a value', () => {
@@ -78,4 +92,10 @@ test('http --host rejects non-IP values', () => {
 
 test('http rejects unknown options', () => {
   assert.throws(() => parseHttpFlags(['--port', '9000']), /unknown http option/);
+});
+
+test('server only accepts the --telegram option', () => {
+  assert.deepEqual(parseServerFlags([]), { telegram: false });
+  assert.deepEqual(parseServerFlags(['--telegram']), { telegram: true });
+  assert.throws(() => parseServerFlags(['--host', '0.0.0.0']), /unknown server option/);
 });

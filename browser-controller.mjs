@@ -11,6 +11,7 @@ import { mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parsePillText } from './parse-pill.mjs';
+import { resolveTelegramConfig, sendTelegramText } from './telegram.mjs';
 export { parsePillText };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -140,6 +141,11 @@ async function readLastAssistantText(page) {
 }
 
 async function _queryImpl(prompt, opts = {}) {
+    const telegramEnabled = process.env.CHATGPT_MCP_TELEGRAM === '1';
+    if (opts.telegram && !telegramEnabled) {
+      throw new Error('per-query Telegram options require starting the service with --telegram');
+    }
+    const telegramConfig = telegramEnabled ? resolveTelegramConfig(opts.telegram) : null;
     const page = await getPage();
     const s = await status();
     if (s.state === 'not_logged_in') throw new Error('not_logged_in: run `chatgpt-mcp launch` and sign in');
@@ -162,6 +168,10 @@ async function _queryImpl(prompt, opts = {}) {
 
     await waitForResponse(page, prevAssistantCount);
     const text = await readLastAssistantText(page);
+    if (telegramConfig) {
+      const messages = await sendTelegramText(text, telegramConfig);
+      log(`forwarded response to Telegram (${messages.length} message(s))`);
+    }
     return { text, key: 'default' };
 }
 export const query = (prompt, opts) => serialize(() => _queryImpl(prompt, opts));

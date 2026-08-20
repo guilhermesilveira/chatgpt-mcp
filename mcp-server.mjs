@@ -19,10 +19,14 @@ server.registerTool('query', {
     fresh: z.boolean().optional().describe('Start a new chat before sending.'),
     model: z.string().optional().describe('Switch to this model first (matches by visible name).'),
     thinking: z.string().optional().describe('Thinking level: "standard" or "longer" (Pro/Thinking models only).'),
+    telegram: z.object({
+      botToken: z.string().optional().describe('Override the configured Telegram bot token.'),
+      chatId: z.string().optional().describe('Override the configured Telegram target chat ID.'),
+    }).optional().describe('Per-query Telegram destination overrides; server must use --telegram.'),
     key: z.string().optional(),
   },
-}, async ({ prompt, fresh, model, thinking }) => {
-  const { text } = await query(prompt, { fresh, model, thinking });
+}, async ({ prompt, fresh, model, thinking, telegram }) => {
+  const { text } = await query(prompt, { fresh, model, thinking, telegram });
   return { content: [{ type: 'text', text }] };
 });
 

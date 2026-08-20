@@ -8,6 +8,7 @@ export function parseFlags(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--fresh') out.fresh = true;
+    else if (a === '--telegram') out.telegram = true;
     else if (a === '--model') out.model = argv[++i];
     else if (a === '--thinking') out.thinking = argv[++i];
     else out._.push(a);
@@ -17,10 +18,13 @@ export function parseFlags(argv) {
 
 export function parseHttpFlags(argv) {
   let host = '127.0.0.1';
+  let telegram = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === '--host') {
+    if (arg === '--telegram') {
+      telegram = true;
+    } else if (arg === '--host') {
       if (i + 1 >= argv.length) throw new Error('--host requires an IP address');
       host = argv[++i];
     } else if (arg.startsWith('--host=')) {
@@ -31,5 +35,14 @@ export function parseHttpFlags(argv) {
   }
 
   if (isIP(host) !== 4) throw new Error(`invalid host IPv4 address: ${host}`);
-  return { host };
+  return { host, telegram };
+}
+
+export function parseServerFlags(argv) {
+  let telegram = false;
+  for (const arg of argv) {
+    if (arg === '--telegram') telegram = true;
+    else throw new Error(`unknown server option: ${arg}`);
+  }
+  return { telegram };
 }
