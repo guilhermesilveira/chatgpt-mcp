@@ -10,6 +10,7 @@
 //     flags: --fresh             start a new chat first
 //            --model <name>      switch model first (matches visible name)
 //            --telegram          forward the response to Telegram
+//            --tid <id>          send the Telegram response to this topic
 //   chatgpt-mcp last                   print last assistant message
 //   chatgpt-mcp new                    open a new chat
 //   chatgpt-mcp model [name]           get or set current model
@@ -98,11 +99,19 @@ try {
 
     case 'query': {
       const flags = parseFlags(rest);
+      if (flags.tid !== undefined && !flags.telegram) {
+        throw new Error('--tid requires --telegram');
+      }
       const prompt = flags._.join(' ').trim();
       if (!prompt) usage();
       if (flags.telegram) await enableTelegram();
       const { text } = await runController(c =>
-        c.query(prompt, { fresh: flags.fresh, model: flags.model, thinking: flags.thinking }),
+        c.query(prompt, {
+          fresh: flags.fresh,
+          model: flags.model,
+          thinking: flags.thinking,
+          telegram: flags.tid === undefined ? undefined : { messageThreadId: flags.tid },
+        }),
       );
       process.stdout.write(text + '\n');
       break;

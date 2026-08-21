@@ -48,7 +48,7 @@ export function loadTelegramConfig(configPath = TELEGRAM_CONFIG_PATH) {
   return validateConfig(botToken, chatId, configPath);
 }
 
-function validateConfig(botToken, chatId, source) {
+function validateConfig(botToken, chatId, source, messageThreadId) {
   if (!botToken || botToken === CONFIG_TEMPLATE.botToken) {
     throw new Error(`botToken is not configured in ${source}`);
   }
@@ -59,21 +59,35 @@ function validateConfig(botToken, chatId, source) {
     throw new Error(`invalid Telegram botToken in ${source}`);
   }
   if (!/^-?\d+$/.test(String(chatId))) throw new Error(`invalid Telegram chatId in ${source}`);
+  if (messageThreadId !== undefined
+      && (!Number.isSafeInteger(messageThreadId) || messageThreadId < 1)) {
+    throw new Error(`invalid Telegram messageThreadId in ${source}`);
+  }
 
-  return { botToken: String(botToken), chatId: String(chatId) };
+  return {
+    botToken: String(botToken),
+    chatId: String(chatId),
+    ...(messageThreadId === undefined ? {} : { messageThreadId }),
+  };
 }
 
 export function resolveTelegramConfig(overrides, configPath = TELEGRAM_CONFIG_PATH) {
   if (overrides !== undefined && (typeof overrides !== 'object' || overrides === null)) {
-    throw new Error('telegram must be an object with botToken and/or chatId');
+    throw new Error('telegram must be an object with botToken, chatId, and/or messageThreadId');
   }
 
   const hasBotToken = Object.prototype.hasOwnProperty.call(overrides || {}, 'botToken');
   const hasChatId = Object.prototype.hasOwnProperty.call(overrides || {}, 'chatId');
   const overrideBotToken = overrides?.botToken;
   const overrideChatId = overrides?.chatId;
+  const messageThreadId = overrides?.messageThreadId;
   if (hasBotToken && hasChatId) {
-    return validateConfig(overrideBotToken, overrideChatId, 'query telegram options');
+    return validateConfig(
+      overrideBotToken,
+      overrideChatId,
+      'query telegram options',
+      messageThreadId,
+    );
   }
 
   const base = loadTelegramConfig(configPath);
@@ -81,6 +95,7 @@ export function resolveTelegramConfig(overrides, configPath = TELEGRAM_CONFIG_PA
     hasBotToken ? overrideBotToken : base.botToken,
     hasChatId ? overrideChatId : base.chatId,
     'query telegram options',
+    messageThreadId,
   );
 }
 
@@ -107,7 +122,7 @@ export function splitTelegramText(text, limit = TELEGRAM_TEXT_LIMIT) {
   return chunks;
 }
 
-async function sendChunk(text, { botToken, chatId }) {
+async function sendChunk(text, { botToken, chatId, messageThreadId }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TELEGRAM_SEND_TIMEOUT_MS);
 
@@ -117,7 +132,11 @@ async function sendChunk(text, { botToken, chatId }) {
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId, text }),
+        body: JSON.stringify({
+          chat_id: chatId,
+          ...(messageThreadId === undefined ? {} : { message_thread_id: messageThreadId }),
+          text,
+        }),
         signal: controller.signal,
       },
     );

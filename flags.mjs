@@ -3,12 +3,23 @@
 
 import { isIP } from 'node:net';
 
+function parseTelegramThreadId(value) {
+  if (!/^\d+$/.test(value || '')) throw new Error('--tid requires a positive integer');
+  const threadId = Number(value);
+  if (!Number.isSafeInteger(threadId) || threadId < 1) {
+    throw new Error('--tid requires a positive integer');
+  }
+  return threadId;
+}
+
 export function parseFlags(argv) {
   const out = { _: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--fresh') out.fresh = true;
     else if (a === '--telegram') out.telegram = true;
+    else if (a === '--tid') out.tid = parseTelegramThreadId(argv[++i]);
+    else if (a.startsWith('--tid=')) out.tid = parseTelegramThreadId(a.slice('--tid='.length));
     else if (a === '--model') out.model = argv[++i];
     else if (a === '--thinking') out.thinking = argv[++i];
     else out._.push(a);

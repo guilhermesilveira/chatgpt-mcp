@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import {
-  loadTelegramConfig, resolveTelegramConfig, splitTelegramText,
+  loadTelegramConfig, resolveTelegramConfig, sendTelegramText, splitTelegramText,
 } from '../telegram.mjs';
 
 test('splitTelegramText preserves text within the limit', () => {
@@ -84,4 +84,48 @@ test('resolveTelegramConfig can override only the destination chat', () => {
     if (previousToken !== undefined) process.env.TELEGRAM_BOT_TOKEN = previousToken;
     if (previousChatId !== undefined) process.env.TELEGRAM_CHAT_ID = previousChatId;
   }
+});
+
+test('resolveTelegramConfig accepts a per-query topic override', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'chatgpt-mcp-telegram-thread-'));
+  const configPath = join(dir, 'telegram.json');
+  writeFileSync(configPath, JSON.stringify({
+    botToken: '123456:configured_TOKEN',
+    chatId: '-100000000001',
+  }), { mode: 0o600 });
+
+  assert.deepEqual(resolveTelegramConfig({ messageThreadId: 42 }, configPath), {
+    botToken: '123456:configured_TOKEN',
+    chatId: '-100000000001',
+    messageThreadId: 42,
+  });
+  assert.throws(
+    () => resolveTelegramConfig({ messageThreadId: 0 }, configPath),
+    /invalid Telegram messageThreadId/,
+  );
+});
+
+test('sendTelegramText includes the topic only when configured', async () => {
+  const originalFetch = globalThis.fetch;
+  const payloads = [];
+  globalThis.fetch = async (_url, options) => {
+    payloads.push(JSON.parse(options.body));
+    return { ok: true, json: async () => ({ ok: true, result: {} }) };
+  };
+
+  try {
+    await sendTelegramText('default topic', {
+      botToken: '123456:test_TOKEN', chatId: '-100000000001',
+    });
+    await sendTelegramText('specific topic', {
+      botToken: '123456:test_TOKEN', chatId: '-100000000001', messageThreadId: 42,
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.deepEqual(payloads, [
+    { chat_id: '-100000000001', text: 'default topic' },
+    { chat_id: '-100000000001', message_thread_id: 42, text: 'specific topic' },
+  ]);
 });

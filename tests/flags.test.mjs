@@ -18,6 +18,22 @@ test('--telegram is a boolean query flag', () => {
   assert.deepEqual(parseFlags(['--telegram', 'hello']), { _: ['hello'], telegram: true });
 });
 
+test('--tid accepts equals and separate-value syntax', () => {
+  assert.deepEqual(parseFlags(['--telegram', '--tid=42', 'hello']), {
+    _: ['hello'], telegram: true, tid: 42,
+  });
+  assert.deepEqual(parseFlags(['--telegram', '--tid', '73', 'hello']), {
+    _: ['hello'], telegram: true, tid: 73,
+  });
+});
+
+test('--tid rejects missing, non-numeric, zero, and unsafe values', () => {
+  assert.throws(() => parseFlags(['--tid']), /requires a positive integer/);
+  assert.throws(() => parseFlags(['--tid=topic']), /requires a positive integer/);
+  assert.throws(() => parseFlags(['--tid=0']), /requires a positive integer/);
+  assert.throws(() => parseFlags(['--tid=9007199254740992']), /requires a positive integer/);
+});
+
 test('--model consumes the next token', () => {
   assert.deepEqual(parseFlags(['--model', 'pro']), { _: [], model: 'pro' });
 });

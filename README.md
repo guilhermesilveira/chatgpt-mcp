@@ -77,13 +77,14 @@ chatgpt-mcp check               # selector self-heal report
 `query` flags:
 
 ```bash
-chatgpt-mcp query --fresh --model pro --thinking longer --telegram "complex question..."
+chatgpt-mcp query --fresh --model pro --thinking longer --telegram --tid=42 "complex question..."
 ```
 
 - `--fresh` — start a new chat first.
 - `--model <name>` — switch model first. Known names: `instant`, `thinking`, `pro` (see `selectors.json → model.name_map`).
 - `--thinking <level>` — set thinking level first. Known: `standard`, `longer`.
 - `--telegram` — forward this CLI query response to the configured Telegram chat.
+- `--tid <id>` / `--tid=<id>` — with `--telegram`, send the response to this forum topic.
 
 ## Telegram
 
@@ -120,6 +121,9 @@ For the other query surfaces, use `chatgpt-mcp server --telegram` for all MCP qu
 or `chatgpt-mcp query --telegram "prompt"` for one direct CLI query. Without the flag,
 responses are returned normally and are not sent to Telegram, even if the config file
 exists.
+
+Direct CLI queries go to the default topic unless `--tid` is provided. For example,
+`chatgpt-mcp query --telegram --tid=42 "prompt"` sends the response to topic `42`.
 
 Each HTTP or MCP query may override the Telegram destination. Usually only `chatId`
 needs to change, and the configured bot token is reused:

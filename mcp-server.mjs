@@ -22,6 +22,8 @@ server.registerTool('query', {
     telegram: z.object({
       botToken: z.string().optional().describe('Override the configured Telegram bot token.'),
       chatId: z.string().optional().describe('Override the configured Telegram target chat ID.'),
+      messageThreadId: z.number().int().positive().optional()
+        .describe('Send the response to this Telegram forum topic.'),
     }).optional().describe('Per-query Telegram destination overrides; server must use --telegram.'),
     key: z.string().optional(),
   },
