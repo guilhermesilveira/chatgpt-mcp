@@ -66,6 +66,7 @@ chatgpt-mcp query "prompt..."   # send a prompt, print the reply
 chatgpt-mcp telegram-config      # create the optional Telegram configuration
 chatgpt-mcp last                # print the last assistant message
 chatgpt-mcp new                 # open a new chat
+chatgpt-mcp archive-chats --confirm # archive every chat
 chatgpt-mcp cleanup-chats --confirm # permanently delete every chat
 chatgpt-mcp model               # print current model
 chatgpt-mcp model pro           # switch model
@@ -92,6 +93,13 @@ irreversible and includes chats inside projects, so `--confirm` is mandatory:
 
 ```bash
 chatgpt-mcp cleanup-chats --confirm
+```
+
+`archive-chats` automates **Settings → Data Controls → Archive all chats**. It
+also includes chats inside projects, but archived chats can be restored later:
+
+```bash
+chatgpt-mcp archive-chats --confirm
 ```
 
 ## Telegram

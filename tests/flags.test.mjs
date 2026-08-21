@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  parseArchiveChatsFlags,
   parseCleanupChatsFlags,
   parseFlags,
   parseHttpFlags,
@@ -130,4 +131,13 @@ test('cleanup-chats rejects missing or additional arguments', () => {
   assert.throws(() => parseCleanupChatsFlags(['yes']), /irreversible/);
   assert.throws(() => parseCleanupChatsFlags(['--confirm=yes']), /irreversible/);
   assert.throws(() => parseCleanupChatsFlags(['--confirm', 'extra']), /irreversible/);
+});
+
+test('archive-chats accepts only the --confirm flag', () => {
+  assert.deepEqual(parseArchiveChatsFlags(['--confirm']), { confirmed: true });
+  assert.throws(() => parseArchiveChatsFlags([]), /archive-chats affects every chat/);
+  assert.throws(
+    () => parseArchiveChatsFlags(['--confirm', 'extra']),
+    /archive-chats affects every chat/,
+  );
 });

@@ -64,3 +64,10 @@ export function parseCleanupChatsFlags(argv) {
   }
   return { confirmed: true };
 }
+
+export function parseArchiveChatsFlags(argv) {
+  if (argv.length !== 1 || argv[0] !== '--confirm') {
+    throw new Error('archive-chats affects every chat; rerun with --confirm');
+  }
+  return { confirmed: true };
+}

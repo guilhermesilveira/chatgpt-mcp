@@ -14,11 +14,13 @@
 //   chatgpt-mcp last                   print last assistant message
 //   chatgpt-mcp new                    open a new chat
 //   chatgpt-mcp cleanup-chats --confirm
+//   chatgpt-mcp archive-chats --confirm
 //   chatgpt-mcp model [name]           get or set current model
 //   chatgpt-mcp stop                   stop an in-progress generation
 //   chatgpt-mcp check                  self-heal report: walk selectors.json against live DOM
 
 import {
+  parseArchiveChatsFlags,
   parseCleanupChatsFlags,
   parseFlags,
   parseHttpFlags,
@@ -29,7 +31,7 @@ const [cmd, ...rest] = process.argv.slice(2);
 
 function usage(code = 2) {
   console.error(
-    'usage: chatgpt-mcp <launch|server|http|status|query|telegram-config|last|new|cleanup-chats|model|thinking|stop|check> [args]',
+    'usage: chatgpt-mcp <launch|server|http|status|query|telegram-config|last|new|archive-chats|cleanup-chats|model|thinking|stop|check> [args]',
   );
   process.exit(code);
 }
@@ -89,6 +91,13 @@ try {
       parseCleanupChatsFlags(rest);
       await runController(c => c.cleanupChats());
       process.stdout.write('all chats cleaned up\n');
+      break;
+    }
+
+    case 'archive-chats': {
+      parseArchiveChatsFlags(rest);
+      await runController(c => c.archiveChats());
+      process.stdout.write('all chats archived\n');
       break;
     }
 

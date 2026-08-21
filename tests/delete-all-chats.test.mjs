@@ -15,6 +15,9 @@ test('delete-all opens Data Controls and completes the confirmation dialog', asy
   const visible = method => ({
     first() { return this; },
     last() { return this; },
+    async count() { return 1; },
+    nth() { return this; },
+    async isVisible() { return true; },
     async waitFor(options) { calls.push({ method: `${method}.waitFor`, options }); },
     async click() { calls.push({ method: `${method}.click` }); },
     getByRole(role, options) {
@@ -63,4 +66,36 @@ test('delete-all opens Data Controls and completes the confirmation dialog', asy
   assert.ok(
     calls.some(call => call.method === 'dialog.waitFor' && call.options.state === 'detached'),
   );
+});
+
+test('delete-all skips hidden role matches and clicks the visible text fallback', async () => {
+  const calls = [];
+  const locator = (method, visibility = [true]) => ({
+    first() { return this; },
+    last() { return this; },
+    async count() { return visibility.length; },
+    nth(index) { return locator(`${method}.${index}`, [visibility[index]]); },
+    async isVisible() { return visibility[0]; },
+    async waitFor(options) { calls.push({ method: `${method}.waitFor`, options }); },
+    async click() { calls.push({ method: `${method}.click` }); },
+    getByRole() { return locator('confirm'); },
+  });
+  const page = {
+    async goto() {},
+    getByText(pattern) {
+      if (pattern.test('Data Controls')) return locator('dataControls');
+      return locator('deleteText');
+    },
+    getByRole(role) {
+      if (role === 'dialog') return locator('dialog');
+      return locator('deleteRole', [false, false]);
+    },
+  };
+
+  assert.deepEqual(
+    await deleteAllChatsFromSettings(page, 'https://chatgpt.com'),
+    { deleted: true },
+  );
+  assert.ok(calls.some(call => call.method === 'deleteText.0.click'));
+  assert.ok(!calls.some(call => call.method.startsWith('deleteRole') && call.method.endsWith('.click')));
 });

@@ -19,35 +19,71 @@ async function waitVisible(locator, errorMessage) {
   }
 }
 
-export async function deleteAllChatsFromSettings(page, homeUrl) {
+async function findVisible(locators, errorMessage) {
+  const deadline = Date.now() + DELETE_ALL_TIMEOUT_MS;
+
+  do {
+    for (const locator of locators) {
+      const count = await locator.count();
+      for (let index = 0; index < count; index += 1) {
+        const candidate = locator.nth(index);
+        if (await candidate.isVisible()) return candidate;
+      }
+    }
+    await new Promise(resolve => setTimeout(resolve, 100));
+  } while (Date.now() < deadline);
+
+  throw new Error(errorMessage);
+}
+
+export async function runAllChatsActionFromSettings(page, homeUrl, {
+  labels,
+  errors,
+  result,
+}) {
   const settingsUrl = new URL('/#settings/DataControls', homeUrl);
   await page.goto(settingsUrl.href, { waitUntil: 'domcontentloaded' });
 
   const dataControls = page
-    .getByText(exactPattern(DELETE_ALL_LABELS.dataControls), { exact: true })
+    .getByText(exactPattern(labels.dataControls), { exact: true })
     .first();
-  await waitVisible(dataControls, 'could not open ChatGPT Data Controls');
+  await waitVisible(dataControls, errors.dataControls);
 
-  const deleteButton = page
-    .getByRole('button', { name: exactPattern(DELETE_ALL_LABELS.action) })
-    .first();
-  await waitVisible(deleteButton, 'could not find Delete all chats in Data Controls');
-  await deleteButton.click();
+  const actionPattern = exactPattern(labels.action);
+  const actionButton = await findVisible([
+    page.getByRole('button', { name: actionPattern }),
+    page.getByText(actionPattern, { exact: true }),
+  ], errors.action);
+  await actionButton.click();
 
   const confirmationDialog = page.getByRole('dialog').last();
-  await waitVisible(confirmationDialog, 'Delete all chats confirmation did not appear');
+  await waitVisible(confirmationDialog, errors.dialog);
 
   const confirmButton = confirmationDialog
-    .getByRole('button', { name: exactPattern(DELETE_ALL_LABELS.confirmation) })
+    .getByRole('button', { name: exactPattern(labels.confirmation) })
     .last();
-  await waitVisible(confirmButton, 'could not find the Delete all chats confirmation button');
+  await waitVisible(confirmButton, errors.confirmation);
   await confirmButton.click();
 
   try {
     await confirmationDialog.waitFor({ state: 'detached', timeout: DELETE_ALL_TIMEOUT_MS });
   } catch (error) {
-    throw new Error('Delete all chats confirmation did not complete', { cause: error });
+    throw new Error(errors.completion, { cause: error });
   }
 
-  return { deleted: true };
+  return result;
+}
+
+export async function deleteAllChatsFromSettings(page, homeUrl) {
+  return runAllChatsActionFromSettings(page, homeUrl, {
+    labels: DELETE_ALL_LABELS,
+    errors: {
+      dataControls: 'could not open ChatGPT Data Controls',
+      action: 'could not find Delete all chats in Data Controls',
+      dialog: 'Delete all chats confirmation did not appear',
+      confirmation: 'could not find the Delete all chats confirmation button',
+      completion: 'Delete all chats confirmation did not complete',
+    },
+    result: { deleted: true },
+  });
 }

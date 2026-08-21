@@ -10,6 +10,7 @@ import { homedir } from 'node:os';
 import { mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { archiveAllChatsFromSettings } from './archive-all-chats.mjs';
 import { deleteAllChatsFromSettings } from './delete-all-chats.mjs';
 import { openNewChat } from './new-chat.mjs';
 import { parsePillText } from './parse-pill.mjs';
@@ -207,6 +208,16 @@ async function _deleteAllChatsImpl() {
   return deleteAllChatsFromSettings(page, SELECTORS.urls.home);
 }
 export const cleanupChats = () => serialize(_deleteAllChatsImpl);
+
+async function _archiveAllChatsImpl() {
+  const page = await getPage();
+  const s = await status();
+  if (s.state === 'not_logged_in') {
+    throw new Error('not_logged_in: run `chatgpt-mcp launch` and sign in');
+  }
+  return archiveAllChatsFromSettings(page, SELECTORS.urls.home);
+}
+export const archiveChats = () => serialize(_archiveAllChatsImpl);
 
 async function _getModelImpl() {
   const page = await getPage();
