@@ -1,6 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseFlags, parseHttpFlags, parseServerFlags } from '../flags.mjs';
+import {
+  parseCleanupChatsFlags,
+  parseFlags,
+  parseHttpFlags,
+  parseServerFlags,
+} from '../flags.mjs';
 
 test('empty argv', () => {
   assert.deepEqual(parseFlags([]), { _: [] });
@@ -114,4 +119,15 @@ test('server only accepts the --telegram option', () => {
   assert.deepEqual(parseServerFlags([]), { telegram: false });
   assert.deepEqual(parseServerFlags(['--telegram']), { telegram: true });
   assert.throws(() => parseServerFlags(['--host', '0.0.0.0']), /unknown server option/);
+});
+
+test('cleanup-chats accepts the --confirm flag', () => {
+  assert.deepEqual(parseCleanupChatsFlags(['--confirm']), { confirmed: true });
+});
+
+test('cleanup-chats rejects missing or additional arguments', () => {
+  assert.throws(() => parseCleanupChatsFlags([]), /irreversible/);
+  assert.throws(() => parseCleanupChatsFlags(['yes']), /irreversible/);
+  assert.throws(() => parseCleanupChatsFlags(['--confirm=yes']), /irreversible/);
+  assert.throws(() => parseCleanupChatsFlags(['--confirm', 'extra']), /irreversible/);
 });

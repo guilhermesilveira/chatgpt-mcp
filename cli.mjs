@@ -13,17 +13,23 @@
 //            --tid <id>          send the Telegram response to this topic
 //   chatgpt-mcp last                   print last assistant message
 //   chatgpt-mcp new                    open a new chat
+//   chatgpt-mcp cleanup-chats --confirm
 //   chatgpt-mcp model [name]           get or set current model
 //   chatgpt-mcp stop                   stop an in-progress generation
 //   chatgpt-mcp check                  self-heal report: walk selectors.json against live DOM
 
-import { parseFlags, parseHttpFlags, parseServerFlags } from './flags.mjs';
+import {
+  parseCleanupChatsFlags,
+  parseFlags,
+  parseHttpFlags,
+  parseServerFlags,
+} from './flags.mjs';
 
 const [cmd, ...rest] = process.argv.slice(2);
 
 function usage(code = 2) {
   console.error(
-    'usage: chatgpt-mcp <launch|server|http|status|query|telegram-config|last|new|model|thinking|stop|check> [args]',
+    'usage: chatgpt-mcp <launch|server|http|status|query|telegram-config|last|new|cleanup-chats|model|thinking|stop|check> [args]',
   );
   process.exit(code);
 }
@@ -76,6 +82,13 @@ try {
     case 'new': {
       await runController(c => c.newChat());
       process.stdout.write('ok\n');
+      break;
+    }
+
+    case 'cleanup-chats': {
+      parseCleanupChatsFlags(rest);
+      await runController(c => c.cleanupChats());
+      process.stdout.write('all chats cleaned up\n');
       break;
     }
 

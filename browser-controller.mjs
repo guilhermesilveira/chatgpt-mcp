@@ -10,7 +10,10 @@ import { homedir } from 'node:os';
 import { mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { deleteAllChatsFromSettings } from './delete-all-chats.mjs';
+import { openNewChat } from './new-chat.mjs';
 import { parsePillText } from './parse-pill.mjs';
+import { waitForNewAssistantTurn } from './response-wait.mjs';
 import { resolveTelegramConfig, sendTelegramText } from './telegram.mjs';
 export { parsePillText };
 
@@ -117,11 +120,12 @@ async function ensureReady(page) {
 }
 
 async function waitForResponse(page, prevAssistantCount) {
-  // 1) wait for a new assistant turn to appear (up to 60s for network/queue)
-  await page.waitForFunction(
-    ({ sel, prev }) => document.querySelectorAll(sel).length > prev,
-    { sel: SELECTORS.conversation.message_assistant, prev: prevAssistantCount },
-    { timeout: 60_000 },
+  // 1) wait up to 5 minutes for the response to start. Once it starts, allow
+  // long-running generations to finish without a total-duration timeout.
+  await waitForNewAssistantTurn(
+    page,
+    SELECTORS.conversation.message_assistant,
+    prevAssistantCount,
   );
   // 2) wait for stop-button to disappear. No timeout — some replies (deep research, long
   // thinking) take an hour. If you need to bail early, kill the process or call stop().
@@ -185,16 +189,24 @@ export const readLast = () => serialize(_readLastImpl);
 
 async function _newChatImpl() {
   const page = await getPage();
-  const btn = page.locator(SELECTORS.nav.new_chat_button);
-  if (await btn.count()) {
-    await btn.first().click();
-  } else {
-    await page.goto(SELECTORS.urls.home, { waitUntil: 'domcontentloaded' });
-  }
-  await page.waitForSelector(SELECTORS.composer.prompt_input, { timeout: 15_000 });
+  await openNewChat(
+    page,
+    SELECTORS.urls.home,
+    SELECTORS.composer.prompt_input,
+  );
   return { key: 'default' };
 }
 export const newChat = () => serialize(_newChatImpl);
+
+async function _deleteAllChatsImpl() {
+  const page = await getPage();
+  const s = await status();
+  if (s.state === 'not_logged_in') {
+    throw new Error('not_logged_in: run `chatgpt-mcp launch` and sign in');
+  }
+  return deleteAllChatsFromSettings(page, SELECTORS.urls.home);
+}
+export const cleanupChats = () => serialize(_deleteAllChatsImpl);
 
 async function _getModelImpl() {
   const page = await getPage();

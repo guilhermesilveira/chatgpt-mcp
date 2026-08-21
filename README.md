@@ -13,7 +13,7 @@ Exposes three surfaces on top of the same browser controller:
 - **Persistent login** — one-time sign-in in a dedicated Chrome profile; session survives restarts
 - **Shared session over CDP** — launcher keeps Chrome open; MCP server, HTTP API, and CLI attach to the same browser via `http://127.0.0.1:9222`
 - **Single-threaded controller** — every mutating op goes through a FIFO mutex so concurrent calls never collide
-- **Long responses** — no internal timeout on generation; a single reply can take up to an hour (deep research, Pro Thinking) without anything bailing
+- **Long responses** — a reply has up to 5 minutes to appear; once started, generation has no internal timeout and can run for an hour (deep research, Pro Thinking)
 - **Model switching** — `Instant` / `Thinking` / `Pro` via stable `data-testid` map
 - **Thinking-level switching** — `Standard` / `Longer` on Pro/Thinking models, matched by SVG sprite icon (locale-independent) with localized-text fallback
 - **Structured status** — reads current model + thinking level passively from the composer pill (no menus opened)
@@ -66,6 +66,7 @@ chatgpt-mcp query "prompt..."   # send a prompt, print the reply
 chatgpt-mcp telegram-config      # create the optional Telegram configuration
 chatgpt-mcp last                # print the last assistant message
 chatgpt-mcp new                 # open a new chat
+chatgpt-mcp cleanup-chats --confirm # permanently delete every chat
 chatgpt-mcp model               # print current model
 chatgpt-mcp model pro           # switch model
 chatgpt-mcp thinking            # print current thinking level
@@ -85,6 +86,13 @@ chatgpt-mcp query --fresh --model pro --thinking longer --telegram --tid=42 "com
 - `--thinking <level>` — set thinking level first. Known: `standard`, `longer`.
 - `--telegram` — forward this CLI query response to the configured Telegram chat.
 - `--tid <id>` / `--tid=<id>` — with `--telegram`, send the response to this forum topic.
+
+`cleanup-chats` automates **Settings → Data Controls → Delete all chats**. It is
+irreversible and includes chats inside projects, so `--confirm` is mandatory:
+
+```bash
+chatgpt-mcp cleanup-chats --confirm
+```
 
 ## Telegram
 

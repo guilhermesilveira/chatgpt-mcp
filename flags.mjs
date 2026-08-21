@@ -57,3 +57,10 @@ export function parseServerFlags(argv) {
   }
   return { telegram };
 }
+
+export function parseCleanupChatsFlags(argv) {
+  if (argv.length !== 1 || argv[0] !== '--confirm') {
+    throw new Error('cleanup-chats is irreversible; rerun with --confirm');
+  }
+  return { confirmed: true };
+}
