@@ -32,10 +32,6 @@
     "login_required_marker": "a[href*=\"/auth/login\"], button[data-testid=\"login-button\"]"
   },
 
-  "nav": {
-    "new_chat_button": "[data-testid=\"create-new-chat-button\"]"
-  },
-
   "model": {
     "dropdown_button": "[data-testid=\"model-switcher-dropdown-button\"]",
     "_menuitem_role": "[role=\"menuitemradio\"], [role=\"menuitem\"], [role=\"option\"]",

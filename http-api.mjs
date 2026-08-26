@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Optional localhost HTTP wrapper. Bearer token auth.
+// Optional HTTP wrapper. Bearer token auth.
 //   GET  /status                → { status: "ready"|"busy"|"not_logged_in" }
-//   POST /query   { prompt }    → { text }
+//   POST /query   { prompt, telegram?: { botToken?, chatId? } } → { text }
 //   GET  /last                  → { text }
 // Token: ~/.chatgpt-mcp/token (auto-created on first run).
 
@@ -28,7 +28,7 @@ function loadOrCreateToken() {
 }
 const TOKEN = loadOrCreateToken();
 const PORT = Number(process.env.PORT || 8765);
-const HOST = '127.0.0.1';
+const HOST = process.env.CHATGPT_MCP_HOST || '127.0.0.1';
 
 function send(res, code, obj) {
   res.writeHead(code, { 'content-type': 'application/json' });
@@ -54,9 +54,9 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { text });
     }
     if (req.method === 'POST' && req.url === '/query') {
-      const { prompt, fresh, model, thinking } = await readBody(req);
+      const { prompt, fresh, model, thinking, telegram } = await readBody(req);
       if (!prompt) return send(res, 400, { error: 'prompt required' });
-      const { text } = await query(prompt, { fresh, model, thinking });
+      const { text } = await query(prompt, { fresh, model, thinking, telegram });
       return send(res, 200, { text });
     }
     if (req.method === 'GET' && req.url === '/thinking') {
